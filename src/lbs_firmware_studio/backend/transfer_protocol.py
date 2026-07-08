@@ -6,7 +6,6 @@ from typing import Callable
 import time
 
 from . import protocol_frame as pf
-from . import ymodem as ym
 from .serial_transport import SerialTransport
 
 ProgressCb = Callable[[int, int], None]
@@ -35,24 +34,7 @@ class CustomFrameProtocol(TransferProtocol):
         t.write(pf.build_frame(pf.CMD_RESET, b"RESET_FWLIB"))
 
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
-        name = path.name.encode(self.filename_encoding)
-        folder_cmd = pf.CMD_FILE_START  # app 文件夹（脚本下发）；固件由 send_folder 调用时传入
-        data = path.read_bytes()
-        # 1. 文件名帧
-        self._send_and_wait(t, pf.build_frame(folder_cmd, name))
-        time.sleep(0.05)
-        # 2. 数据分块
-        total = len(data)
-        sent = 0
-        seq = 0
-        while sent < total:
-            chunk = data[sent:sent + self.chunk_size]
-            is_last = sent + len(chunk) >= total
-            cmd = pf.CMD_FILE_END if is_last else pf.CMD_FILE_DATA
-            self._send_and_wait(t, pf.build_frame(cmd, chunk), is_last=is_last)
-            sent += len(chunk)
-            seq += 1
-            on_progress(sent, total)
+        self._send_file_with_cmd(t, path, pf.CMD_FILE_START, on_progress)
 
     def send_folder(self, t: SerialTransport, folder: Path, folder_name: str, on_progress: ProgressCb) -> None:
         cmd = pf.FOLDER_CMD_MAP[folder_name]

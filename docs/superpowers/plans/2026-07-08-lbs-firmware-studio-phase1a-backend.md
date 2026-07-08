@@ -602,6 +602,7 @@ class DeviceSimulator:
         self.emit_json = emit_json
         self.received_files: dict[str, bytes] = {}  # filename -> data
         self._cur_name = None
+        self._cur_size = None
         self._cur_buf = bytearray()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -700,42 +701,48 @@ class DeviceSimulator:
 
     def _do_ymodem_session(self, is_firmware: bool) -> None:
         self.ser.write(bytes([ym.CRC_C]))  # 请求文件头
-        # 收文件头包 (SOH, seq=0)
-        hdr = self._read_packet(128)
+        # 收文件头包 (SOH, seq=0)；_read_packet 返回纯 payload(已剥 mark/seq/~seq/crc)
+        hdr = self._read_packet()
         if hdr is None:
             return
-        name_end = hdr.find(b"\x00")
-        self._cur_name = hdr[:name_end].decode("ascii", errors="replace") if name_end > 0 else "unnamed"
+        parts = hdr.split(b"\x00")  # header = name\x00size\x00...
+        self._cur_name = parts[0].decode("ascii", errors="replace") if parts[0] else "unnamed"
+        self._cur_size = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
         self._cur_buf = bytearray()
         self.ser.write(bytes([ym.ACK, ym.CRC_C]))
         if is_firmware and self.emit_json:
             self._emit_json_burst()
         # 收数据包
         while not self._stop.is_set():
-            pkt = self._read_packet(1024, timeout=12.0)
+            pkt = self._read_packet(timeout=12.0)
             if pkt is None:
                 break
-            mark = pkt[0]
-            if mark == ym.EOT:
+            if pkt == bytes([ym.EOT]):
                 self.ser.write(bytes([ym.NAK]))
-                eot2 = self._read_byte(timeout=5.0)
-                # 第二个 EOT
+                self._read_byte(timeout=5.0)    # 第二个 EOT
                 self.ser.write(bytes([ym.ACK]))
                 self.ser.write(bytes([ym.CRC_C]))
-                end = self._read_packet(128, timeout=5.0)  # 空结束块
+                self._read_packet(timeout=5.0)  # 空结束块
                 self.ser.write(bytes([ym.ACK]))
-                if self._cur_name:
-                    self.received_files[self._cur_name] = bytes(self._cur_buf)
+                self._finalize_ymodem_file()
                 self.ser.write(b"YMODEM OK\r\n")
                 return
-            seq = pkt[1]
-            body = pkt[3:3 + (1024 if mark == ym.STX else 128)]
-            self._cur_buf.extend(body.rstrip(b"\x1A"))
+            self._cur_buf.extend(pkt)  # pkt 已是纯 body
             if self.emit_json and not is_firmware:
                 self._emit_json_burst()
             self.ser.write(bytes([ym.ACK]))
 
-    def _read_packet(self, block_size: int, timeout: float = 12.0) -> bytes | None:
+    def _finalize_ymodem_file(self) -> None:
+        if not self._cur_name:
+            return
+        data = bytes(self._cur_buf)
+        if self._cur_size is not None:
+            data = data[:self._cur_size]  # 按文件头声明大小截断填充
+        self.received_files[self._cur_name] = data
+
+    def _read_packet(self, timeout: float = 12.0) -> bytes | None:
+        """读一个 YMODEM 包；块大小由 mark 决定(SOH=128/STX=1024)。
+        返回纯 body(去 mark/seq/~seq/crc)，或 EOT 单字节 bytes([ym.EOT])。"""
         old = self.ser.timeout
         self.ser.timeout = timeout
         try:
@@ -744,11 +751,12 @@ class DeviceSimulator:
                 return None
             if mark[0] == ym.EOT:
                 return bytes([ym.EOT])
-            rest_len = 2 + block_size + 2
+            block_size = 128 if mark[0] == ym.SOH else 1024
+            rest_len = 2 + block_size + 2  # seq,~seq + body + crc16
             rest = self.ser.read(rest_len)
             if len(rest) != rest_len:
                 return None
-            return mark + rest
+            return rest[2:-2]  # 剥去 seq/~seq 前缀与 crc 尾部
         finally:
             self.ser.timeout = old
 
