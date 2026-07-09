@@ -1,5 +1,4 @@
 import pathlib, subprocess
-from unittest.mock import patch
 import pytest
 from lbs_firmware_studio.backend.pika_compiler import compile_py
 

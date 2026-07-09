@@ -1,4 +1,4 @@
-import pathlib, textwrap
+import textwrap
 from lbs_firmware_studio.backend.profile import load_profiles
 
 

@@ -109,9 +109,16 @@ class DeviceSimulator:
             self.ser.timeout = old
 
     def _do_ymodem_session(self, is_firmware: bool) -> None:
-        self.ser.write(bytes([ym.CRC_C]))  # 请求文件头
-        # 收文件头包 (SOH, seq=0)；_read_packet 返回纯 payload(已剥 mark/seq/~seq/crc)
-        hdr = self._read_packet()
+        # YMODEM 接收端在收到文件头前会周期性重发 'C'。真机复位重连后主机才开始等 'C'，
+        # 故这里循环重发，避免与主机的“进入升级->复位重连”窗口错开导致握手丢失。
+        hdr = None
+        for _ in range(60):
+            if self._stop.is_set():
+                return
+            self.ser.write(bytes([ym.CRC_C]))  # 请求文件头
+            hdr = self._read_packet(timeout=1.0)
+            if hdr is not None:
+                break
         if hdr is None:
             return
         parts = hdr.split(b"\x00")  # header = name\x00size\x00...

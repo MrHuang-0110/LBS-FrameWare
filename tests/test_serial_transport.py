@@ -48,3 +48,22 @@ def test_write_sends_to_peer():
         assert dev_ser.read(4) == b"ping"
     finally:
         pass
+
+
+def test_wait_for_reopen_with_factory_rearms_rx():
+    host_ser, dev_ser = make_fake_serial_pair()
+
+    def reopen_factory(port, baud):
+        host_ser.is_open = True  # 模拟同一 FakeSerial 重新枚举
+        return host_ser
+
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
+    t.start_rx()
+    try:
+        ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=0.05)
+        assert ok is True
+        # 重连后 RX 线程应已重新武装：对端写的字节能被 read_byte 收到
+        dev_ser.write(b"\x42")
+        assert t.read_byte(timeout=1.0) == 0x42
+    finally:
+        t.stop_rx()

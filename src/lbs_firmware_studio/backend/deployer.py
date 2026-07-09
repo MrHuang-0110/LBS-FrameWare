@@ -33,12 +33,11 @@ class DeviceDeployer(QObject):
     def compile_scripts(self, profile: DeviceProfile, py_dir: Path) -> list[Path]:
         self.state_changed.emit("compiling")
         outs = []
-        for src, dst in profile.script_dirs.items():
-            for py in sorted(Path(py_dir).glob("*.py")):
-                out = Path(py_dir) / (py.stem + ".py.o")
-                self.log.emit(f"compile {py.name}")
-                compile_py(py, out, profile.compiler_path)
-                outs.append(out)
+        for py in sorted(Path(py_dir).glob("*.py")):
+            out = Path(py_dir) / (py.stem + ".py.o")
+            self.log.emit(f"compile {py.name}")
+            compile_py(py, out, profile.compiler_path)
+            outs.append(out)
         return outs
 
     def _make_protocol(self, profile: DeviceProfile):
@@ -48,12 +47,22 @@ class DeviceDeployer(QObject):
                                        filename_encoding=profile.filename_encoding)
         return YmodemProtocol(block_size=profile.chunk_size, ack_timeout=12.0)
 
+    def _enter_and_reconnect(self, proto, profile: DeviceProfile, port: str, *, firmware: bool) -> None:
+        """进入升级模式 -> USB 复位 -> 轮询重连 -> 重新武装 RX（spec §5.2-5.4 强制流程）。"""
+        self.state_changed.emit("entering_upgrade")
+        enter_cmd = profile.firmware_enter_cmd if firmware else profile.script_enter_cmd
+        proto.enter_upgrade_mode(self._transport, firmware=firmware, enter_cmd=enter_cmd)
+        self.state_changed.emit("reconnecting")
+        ok = self._transport.wait_for_reopen(port, profile.baud, profile.reopen_retries, profile.reopen_delay)
+        if not ok:
+            raise RuntimeError(f"device did not re-enumerate on {port}")
+        self._transport.start_rx()  # wait_for_reopen 内的 close() 停了 RX 线程，这里再武装
+
     def update_firmware(self, profile: DeviceProfile, port: str) -> None:
         try:
             self.state_changed.emit("connecting")
             proto = self._make_protocol(profile)
-            self.state_changed.emit("entering_upgrade")
-            proto.enter_upgrade_mode(self._transport, firmware=True)
+            self._enter_and_reconnect(proto, profile, port, firmware=True)
             self.state_changed.emit("transfering")
             if profile.protocol == "custom_frame":
                 fw_dir = Path(profile.firmware_dir)
@@ -78,8 +87,7 @@ class DeviceDeployer(QObject):
             outs = self.compile_scripts(profile, py_dir)
             self.state_changed.emit("connecting")
             proto = self._make_protocol(profile)
-            self.state_changed.emit("entering_upgrade")
-            proto.enter_upgrade_mode(self._transport, firmware=False)
+            self._enter_and_reconnect(proto, profile, port, firmware=False)
             self.state_changed.emit("transfering")
             if profile.protocol == "custom_frame":
                 # 脚本作为 app 文件夹下发
@@ -90,6 +98,8 @@ class DeviceDeployer(QObject):
                         shutil.copy(o, tmp / o.name)
                     proto.send_folder(self._transport, tmp, "app", self._on_progress)  # type: ignore[attr-defined]
             else:
+                if len(outs) > 1:
+                    raise RuntimeError("multi-file YMODEM script deploy not supported in Phase 1a — deploy one .py at a time")
                 for o in outs:
                     proto.send_file(self._transport, o, self._on_progress, firmware=False)
             proto.finish_session(self._transport, firmware=False)
