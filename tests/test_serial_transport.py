@@ -50,6 +50,44 @@ def test_write_sends_to_peer():
         pass
 
 
+def test_rx_loop_reads_available_not_fixed_64(monkeypatch):
+    """RX 线程应读 in_waiting 可用字节，而非固定 read(64) 死等凑满/超时。
+    锁定性能修复：8 字节 ACK 不应被 read(64) 的 timeout 拖延。"""
+    import queue as _q
+    calls = []
+
+    class RecordingSerial:
+        def __init__(self):
+            self.is_open = True
+            self.timeout = 0.1
+            self._buf = bytearray([0x5A, 0x98, 0x97, 0x01, 0xFD, 0x01, 0x88, 0xA5])  # 8B ACK
+        @property
+        def in_waiting(self):
+            return len(self._buf)
+        def read(self, n=1):
+            calls.append(n)
+            out = bytes(self._buf[:n]); del self._buf[:n]
+            return out
+
+    ser = RecordingSerial()
+    t = SerialTransport(ser)
+    t.start_rx()
+    try:
+        import time
+        got = []
+        deadline = time.monotonic() + 1.0
+        while len(got) < 8 and time.monotonic() < deadline:
+            b = t.read_byte(timeout=0.2)
+            if b is not None:
+                got.append(b)
+        assert got == [0x5A, 0x98, 0x97, 0x01, 0xFD, 0x01, 0x88, 0xA5]
+        # 关键：读取时用的是 in_waiting 的字节数(8)，而不是固定 64
+        assert 8 in calls
+        assert 64 not in calls
+    finally:
+        t.stop_rx()
+
+
 def test_wait_for_reopen_with_factory_rearms_rx():
     host_ser, dev_ser = make_fake_serial_pair()
 

@@ -76,7 +76,14 @@ class SerialTransport:
     def _rx_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                chunk = self._serial.read(64)
+                # 优先读缓冲区内「当前可用」的字节，有多少读多少，避免 read(64)
+                # 为凑满 64 字节而阻塞满串口 timeout（8 字节的 ACK 会被拖满 ~100ms）。
+                n = getattr(self._serial, "in_waiting", 0)
+                if n:
+                    chunk = self._serial.read(n)
+                else:
+                    # 无数据时读 1 字节（受串口 timeout 限制）阻塞等待，不忙等
+                    chunk = self._serial.read(1)
             except Exception:
                 time.sleep(0.05)
                 continue
