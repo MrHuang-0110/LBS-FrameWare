@@ -62,6 +62,28 @@ def test_worker_emits_finished_on_error(qtbot):
         t.stop_rx(); sim_close(t)
 
 
+def test_worker_reports_open_failure(qtbot):
+    # transport.open() 在 update_firmware 之前抛出（端口占用/拔线），
+    # worker 应补发 deployer.error，并且 finished 仍必发。
+    class FailingTransport:
+        def open(self, port, baud):
+            raise OSError("port busy")
+        def start_rx(self):
+            pass
+        def close(self):
+            pass
+    t = FailingTransport()
+    with tempfile.TemporaryDirectory() as d:
+        dep = DeviceDeployer(t)
+        worker = DeployWorker(t, dep)
+        errors = []
+        dep.error.connect(lambda e: errors.append(e))
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.run_firmware(_profile(d), "COM_FAKE")
+        assert errors  # open() 失败已上报
+        assert any("port busy" in e for e in errors)
+
+
 def sim_close(t):
     try: t.stop_rx()
     except Exception: pass

@@ -81,9 +81,13 @@ class MainWindow(QWidget):
 
     # ---- 固件更新流程 ----
     def _start_firmware(self):
+        if self._busy or (self._thread is not None and self._thread.isRunning()):
+            return
         port = self._port.selected_port()
         if not port:
             QMessageBox.warning(self, "提示", "未选择串口"); return
+        self._busy = True
+        self._firmware.set_busy(True)   # 立即禁用开始按钮，防止排队期间二次点击
         self._transport = SerialTransport()
         self._deployer = DeviceDeployer(self._transport)
         self._deployer.progress.connect(self._firmware.on_progress)

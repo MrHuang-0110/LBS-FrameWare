@@ -26,8 +26,15 @@ class DeployWorker(QObject):
             self._transport.open(port, profile.baud)
             self._transport.start_rx()
             self._deployer.update_firmware(profile, port)
-        except Exception:
-            pass  # 错误已由 deployer.error 信号上报；此处不再抛以保证 finished 必发
+        except Exception as e:
+            # open()/start_rx() 失败在 update_firmware 之前，deployer 尚未上报；此处补发，
+            # 使 MainWindow 的 _on_error 弹窗 + _on_state("error") 能触发。
+            # 若 update_firmware 自身抛出，它已先发过 error；再发一次无害。
+            try:
+                self._deployer.error.emit(f"打开串口失败: {e}")
+                self._deployer.state_changed.emit("error")
+            except Exception:
+                pass
         finally:
             try:
                 self._transport.close()
