@@ -44,3 +44,20 @@ def test_state_updates_statusbar_and_locks(qtbot, tmp_path):
     assert "传输" in w.status_bar_text()
     w._on_state("done")
     assert w.is_busy() is False
+
+
+def test_start_firmware_no_port_returns_early(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(w._port, "selected_port", lambda: None)
+    w._start_firmware()  # no port -> early return, must not become busy / crash
+    assert w.is_busy() is False
+
+
+def test_start_firmware_reentrancy_guard(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._on_state("transfering")   # simulate busy
+    assert w.is_busy() is True
+    w._start_firmware()          # busy -> guard returns, no second thread
+    assert w._thread is None     # never created a thread while busy
