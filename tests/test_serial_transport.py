@@ -67,3 +67,38 @@ def test_wait_for_reopen_with_factory_rearms_rx():
         assert t.read_byte(timeout=1.0) == 0x42
     finally:
         t.stop_rx()
+
+
+def test_wait_for_reopen_waits_post_delay(monkeypatch):
+    """重开成功后必须等待 post_delay，让 USB CDC/设备初始化完成再返回（修 winerror 22）。"""
+    import lbs_firmware_studio.backend.serial_transport as st
+    host_ser, _ = make_fake_serial_pair()
+    slept = []
+    monkeypatch.setattr(st.time, "sleep", lambda s: slept.append(s))
+
+    def reopen_factory(port, baud):
+        host_ser.is_open = True
+        return host_ser
+
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=2.0, post_delay=5.0)
+    assert ok is True
+    # 成功那次的 5.0s 初始化等待必须发生在返回前
+    assert 5.0 in slept
+
+
+def test_wait_for_reopen_no_post_delay_when_zero(monkeypatch):
+    """post_delay=0（如 YMODEM）时不额外等待。"""
+    import lbs_firmware_studio.backend.serial_transport as st
+    host_ser, _ = make_fake_serial_pair()
+    slept = []
+    monkeypatch.setattr(st.time, "sleep", lambda s: slept.append(s))
+
+    def reopen_factory(port, baud):
+        host_ser.is_open = True
+        return host_ser
+
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=1.0, post_delay=0.0)
+    assert ok is True
+    assert 0.0 not in slept  # post_delay=0 不触发额外 sleep(0)

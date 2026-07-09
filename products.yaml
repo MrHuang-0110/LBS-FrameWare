@@ -37,3 +37,4 @@ products:
     script_enter_cmd: "ymodem\r\n"
     reopen_retries: 40
     reopen_delay: 3.0
+    post_reopen_delay: 0.0   # YMODEM 靠等 'C' 握手，无需固定初始化等待

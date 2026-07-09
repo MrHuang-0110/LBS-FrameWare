@@ -22,6 +22,7 @@ class DeviceProfile:
     firmware_dir: Path = Path(".")
     reopen_retries: int = 5
     reopen_delay: float = 2.0
+    post_reopen_delay: float = 5.0   # 重开串口成功后等待设备 USB CDC/固件初始化（原工具经验值 5s）
 
 
 def _to_bytes(val) -> bytes:
@@ -54,5 +55,6 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             firmware_dir=Path(cfg.get("firmware_dir", ".")),
             reopen_retries=cfg.get("reopen_retries", 5),
             reopen_delay=cfg.get("reopen_delay", 2.0),
+            post_reopen_delay=cfg.get("post_reopen_delay", 5.0),
         )
     return out

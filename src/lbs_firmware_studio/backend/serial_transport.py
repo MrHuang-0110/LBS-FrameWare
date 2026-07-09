@@ -96,7 +96,8 @@ class SerialTransport:
         except queue.Empty:
             return None
 
-    def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float) -> bool:
+    def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
+                        post_delay: float = 0.0) -> bool:
         was_rx = self._thread is not None and self._thread.is_alive()
         self.close()
         for attempt in range(retries):
@@ -109,6 +110,10 @@ class SerialTransport:
                 else:
                     self._serial.is_open = True
                 self._rx_queue = queue.Queue()
+                # 端口重现且能打开 != 设备就绪：USB CDC 接口/固件复位后需初始化时间，
+                # 过早写入会被驱动拒绝 (winerror 22 ERROR_BAD_COMMAND)。等待设备就绪。
+                if post_delay > 0:
+                    time.sleep(post_delay)
                 if was_rx:
                     self.start_rx()  # close() 停了 RX 线程，这里重新武装
                 return True
