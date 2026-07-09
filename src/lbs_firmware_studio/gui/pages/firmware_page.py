@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QLineEdit)
 from PySide6.QtCore import Signal
 from ..widgets.log_view import LogView
-from ..widgets.status_badge import _STATE_TEXT
 
 _STAGE_TEXT = {
     "idle": "就绪", "compiling": "编译中", "connecting": "连接中",
