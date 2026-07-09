@@ -83,7 +83,10 @@ class DeviceSimulator:
             return
 
     def _send_ack(self) -> None:
-        self.ser.write(pf.build_frame(pf.CMD_ACK, b""))
+        # 真机 ACK 带 1 字节 data，且 src/dst 顺序与主机帧相反(5a 98 97 ...)。
+        # 手工构造以贴近真机，让测试能覆盖「带 data 的变长 ACK」。
+        body = bytes([pf.HEADER, pf.DEST, pf.SOURCE, 0x01, pf.CMD_ACK, 0x01])
+        self.ser.write(body + bytes([pf.calculate_checksum(body), pf.FOOTER]))
 
     # ---- YMODEM ----
     def _ymodem_step(self) -> None:

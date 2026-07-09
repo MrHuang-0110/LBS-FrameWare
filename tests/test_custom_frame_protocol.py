@@ -55,3 +55,33 @@ def test_send_file_retries_on_timeout():
             proto.send_file(t, path, lambda d, n: None, firmware=False)
     finally:
         t.stop_rx()
+
+
+class _ByteFeeder:
+    """最小传输替身：预置字节序列，逐字节喂给 read_byte（模拟真机 ACK 回帧）。"""
+    def __init__(self, data: bytes):
+        self._data = bytearray(data)
+    def write(self, data: bytes) -> int:
+        return len(data)
+    def read_byte(self, timeout: float):
+        if self._data:
+            return self._data.pop(0)
+        return None
+
+
+def test_wait_ack_accepts_real_device_ack_with_data_byte():
+    """真机 ACK 带 1 字节 data 且 SOURCE/DEST 顺序与主机帧相反：5a 98 97 01 fd 01 88 a5。
+    旧实现在攒够 7 字节时就 parse，长度不符(需8)而丢弃，导致收不到 ACK。"""
+    real_ack = bytes([0x5A, 0x98, 0x97, 0x01, 0xFD, 0x01, 0x88, 0xA5])
+    proto = CustomFrameProtocol(ack_timeout=1.0)
+    t = _ByteFeeder(real_ack)
+    assert proto._wait_ack(t, timeout=1.0, is_last=False) is True
+
+
+def test_wait_ack_still_accepts_empty_data_ack():
+    """向后兼容：7 字节空 data ACK 仍被接受（模拟器用的格式）。"""
+    from lbs_firmware_studio.backend import protocol_frame as pf
+    empty_ack = pf.build_frame(pf.CMD_ACK, b"")  # 7 bytes
+    proto = CustomFrameProtocol(ack_timeout=1.0)
+    t = _ByteFeeder(empty_ack)
+    assert proto._wait_ack(t, timeout=1.0, is_last=False) is True

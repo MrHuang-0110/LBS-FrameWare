@@ -70,22 +70,53 @@ class CustomFrameProtocol(TransferProtocol):
         raise TimeoutError(f"no ACK after {self.max_retries} retries")
 
     def _wait_ack(self, t: SerialTransport, timeout: float, *, is_last: bool) -> bool:
-        """末帧：超时也视为成功（设备写 Flash 可能不回 ACK，按需求文档等 2s）；非末帧：必须收到 ACK 否则返回 False 触发重传。"""
+        """末帧：超时也视为成功（设备写 Flash 可能不回 ACK，按需求文档等 2s）；非末帧：必须收到 ACK 否则返回 False 触发重传。
+
+        按帧长动态读取，不假设固定长度：找到帧头 0x5A 后读固定 4 字节(src/dst/len/cmd)，
+        据 len 读 data，再读 checksum+footer。真机 ACK 带 1 字节 data(共 8 字节)，
+        且 src/dst 顺序与主机发出的帧相反，故仅凭 cmd==0xFD 判定，不校验 src/dst。
+        """
         deadline = time.monotonic() + timeout
-        buf = bytearray()
+
+        def _remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
         while time.monotonic() < deadline:
-            b = t.read_byte(timeout=max(0.05, deadline - time.monotonic()))
+            b = t.read_byte(timeout=max(0.05, _remaining()))
             if b is None:
                 return True if is_last else False
-            buf.append(b)
-            if buf[0] != pf.HEADER:
-                buf = bytearray()
+            if b != pf.HEADER:
+                continue  # 丢弃噪声，继续找帧头
+            # 读固定部分 src/dst/len/cmd
+            fixed = []
+            for _ in range(4):
+                nb = t.read_byte(timeout=max(0.05, _remaining()))
+                if nb is None:
+                    break
+                fixed.append(nb)
+            if len(fixed) != 4:
                 continue
-            if len(buf) >= 7:
-                parsed = pf.parse_frame(bytes(buf))
-                if parsed and parsed[0] == pf.CMD_ACK:
-                    return True
-                buf = bytearray()
+            data_len = fixed[2]
+            cmd = fixed[3]
+            # 读 data + checksum + footer
+            rest_needed = data_len + 2
+            rest = []
+            for _ in range(rest_needed):
+                nb = t.read_byte(timeout=max(0.05, _remaining()))
+                if nb is None:
+                    break
+                rest.append(nb)
+            if len(rest) != rest_needed:
+                continue
+            if rest[-1] != pf.FOOTER:
+                continue  # 帧尾不符，重新找帧头
+            # 校验和：sum(HEADER..data) & 0xFF
+            frame_wo_tail = bytes([pf.HEADER] + fixed + rest[:data_len])
+            if rest[-2] != pf.calculate_checksum(frame_wo_tail):
+                continue
+            if cmd == pf.CMD_ACK:
+                return True
+            # 其它功能码(如 0xFC 失败/0xFE 错误)：非 ACK，继续等到超时
         return True if is_last else False
 
     def _last_frame_timeout(self) -> float:
