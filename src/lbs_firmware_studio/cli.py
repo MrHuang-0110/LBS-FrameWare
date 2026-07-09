@@ -34,13 +34,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("需指定 --firmware 或 --scripts DIR")
 
     t = SerialTransport()
-    t.open(args.port, profile.baud)  # open() 内构造真实 serial 并拉低 DTR/RTS
-    t.start_rx()
     dep = DeviceDeployer(t)
     dep.log.connect(lambda s: print(s))
     dep.progress.connect(lambda d, n: print(f"\r{d}/{n}", end="", flush=True))
     dep.state_changed.connect(lambda s: print(f"\n[{s}]"))
     try:
+        t.open(args.port, profile.baud)  # open() 内构造真实 serial 并拉低 DTR/RTS
+        t.start_rx()
         if args.firmware:
             dep.update_firmware(profile, args.port)
         else:
