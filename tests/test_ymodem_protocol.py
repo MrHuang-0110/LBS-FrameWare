@@ -1,4 +1,5 @@
 import pathlib, tempfile
+import pytest
 from lbs_firmware_studio.backend.serial_transport import SerialTransport
 from lbs_firmware_studio.backend.transfer_protocol import YmodemProtocol
 from tests.fakes import make_fake_serial_pair
@@ -36,3 +37,35 @@ def test_script_deploy_tolerates_json():
         assert sim.received_files.get(path.name) == b"\xBB" * 500
     finally:
         t.stop_rx(); sim.stop()
+
+
+def test_firmware_data_block_timeout_raises():
+    """固件传输中数据块超时必须抛错，不得因 usb_quick_exit 静默视为成功。"""
+    import threading
+    from lbs_firmware_studio.backend import ymodem as ym
+    host_ser, dev_ser = make_fake_serial_pair()
+
+    stop = threading.Event()
+
+    def stub_device():
+        # 发 'C' 请求文件头
+        dev_ser.write(bytes([ym.CRC_C]))
+        # 读文件头包 (SOH=128 -> 3+128+2 字节)
+        dev_ser.timeout = 5.0
+        dev_ser.read(3 + 128 + 2)
+        # ACK 文件头并再发 'C'，让主机进入数据阶段
+        dev_ser.write(bytes([ym.ACK, ym.CRC_C]))
+        # 之后对任何数据块都不回 ACK -> 触发超时
+        while not stop.is_set():
+            dev_ser.read(64)
+
+    th = threading.Thread(target=stub_device, daemon=True); th.start()
+    t = SerialTransport(host_ser); t.start_rx()
+    try:
+        proto = YmodemProtocol(block_size=1024, ack_timeout=0.2, max_retries=3, usb_quick_exit=True)
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+            f.write(b"\xAA" * 2048); path = pathlib.Path(f.name)
+        with pytest.raises(TimeoutError):
+            proto.send_file(t, path, lambda d, n: None, firmware=True)
+    finally:
+        stop.set(); t.stop_rx(); th.join(timeout=2)

@@ -14,7 +14,7 @@ ProgressCb = Callable[[int, int], None]
 
 class TransferProtocol(ABC):
     @abstractmethod
-    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool) -> None: ...
+    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool, enter_cmd: bytes | None = None) -> None: ...
     @abstractmethod
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None: ...
     @abstractmethod
@@ -31,8 +31,9 @@ class CustomFrameProtocol(TransferProtocol):
         self.max_retries = max_retries
         self.filename_encoding = filename_encoding
 
-    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool) -> None:
-        t.write(pf.build_frame(pf.CMD_RESET, b"RESET_FWLIB"))
+    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool, enter_cmd: bytes | None = None) -> None:
+        cmd = enter_cmd if enter_cmd else b"RESET_FWLIB"
+        t.write(pf.build_frame(pf.CMD_RESET, cmd))
 
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
         self._send_file_with_cmd(t, path, pf.CMD_FILE_START, on_progress)
@@ -101,8 +102,11 @@ class YmodemProtocol(TransferProtocol):
         self.max_retries = max_retries
         self.usb_quick_exit = usb_quick_exit
 
-    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool) -> None:
-        cmd = b"ymodem update fmware\r\n" if firmware else b"ymodem\r\n"
+    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool, enter_cmd: bytes | None = None) -> None:
+        if enter_cmd:
+            cmd = enter_cmd
+        else:
+            cmd = b"ymodem update fmware\r\n" if firmware else b"ymodem\r\n"
         t.write(cmd)
 
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
@@ -140,8 +144,8 @@ class YmodemProtocol(TransferProtocol):
                 return
             except TimeoutError:
                 if attempt == self.max_retries - 1:
-                    if firmware and self.usb_quick_exit:
-                        return  # Boot 复位断线视为完成
+                    # 数据块必须真正收到 ACK；超时代表通信故障，不得静默视为成功
+                    # （usb_quick_exit 只作用于 _finish/EOT 阶段，见 spec §5.2 step e）
                     raise
 
     def _finish(self, t: SerialTransport, firmware: bool) -> None:
