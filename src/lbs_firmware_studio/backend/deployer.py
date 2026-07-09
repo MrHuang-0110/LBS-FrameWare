@@ -82,14 +82,22 @@ class DeviceDeployer(QObject):
             raise
 
     def deploy_script(self, profile: DeviceProfile, port: str, py_path: Path, slot: int = 0) -> None:
-        """把单个 .py 编译为 <slot>.o 并下发到设备对应槽位（阶段1固定 slot=0）。"""
+        """把单个 .py 编译为 <slot>.o 并下发到设备对应槽位（阶段1固定 slot=0）。
+
+        脚本下发**不复位设备、不重连**（区别于固件更新）：
+        - custom_frame(NEW-AI/SPARK-AI): 直接在当前串口发 <slot>.o(0xDA)，无进入命令。
+        - ymodem(NEXT-AI): 发 script_enter_cmd("ymodem\\r\\n") 让运行中的 app 进 YMODEM
+          接收态（非固件复位、不重新枚举），随后同串口 YMODEM 传输。
+        """
         try:
             o_file = self._compile_to_slot(profile, py_path, slot)
             self.state_changed.emit("connecting")
             proto = self._make_protocol(profile)
-            self._enter_and_reconnect(proto, profile, port, firmware=False)
+            if profile.protocol == "ymodem":
+                # 仅发进入 YMODEM 的命令，不复位/不重连
+                proto.enter_upgrade_mode(self._transport, firmware=False,
+                                         enter_cmd=profile.script_enter_cmd)
             self.state_changed.emit("transfering")
-            # custom_frame: send_file 用 app 功能码(0xDA) 发单文件；ymodem: send_file 单会话
             proto.send_file(self._transport, o_file, self._on_progress, firmware=False)
             proto.finish_session(self._transport, firmware=False)
             self.state_changed.emit("done")

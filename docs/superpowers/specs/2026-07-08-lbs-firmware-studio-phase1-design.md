@@ -271,14 +271,14 @@ compiler_path: ./tools/rust-msc-latest-win10.exe
 
 ```
 1. compile: 把用户指定的单个 .py 编译成 <slot>.o（阶段1: 0.o）
-2. open(port, baud)
-3. enter_upgrade + 重连   # 同 5.2 的步骤 2-3，按产品协议
-4. transfer:
-   · NEW-AI/SPARK-AI: 把 0.o 作为 app 文件(cmd=0xDA) 用自定义帧下发单个文件
-   · NEXT-AI:         用 YMODEM 下发单个 0.o
-5. finish -> close
+2. open(port, baud)   # 使用当前串口，不复位、不重连
+3. transfer:
+   · NEW-AI/SPARK-AI: 直接发 0.o 作为 app 文件(cmd=0xDA)，无进入命令、不复位设备
+   · NEXT-AI:         发 "ymodem\r\n" 让运行中的 app 进 YMODEM 接收态(非固件复位/不重枚举)，再 YMODEM 发 0.o
+4. finish -> close
 ```
 
+> **关键：脚本下发不复位设备、不重连**（区别于固件更新）。原工具 `download_app_files` 里 `reset_device()` 被注释掉即为此意——直接在当前串口发 `.o`。误加复位重连会导致设备状态错乱、写入被拒（winerror 22）。
 > 命名为 `<slot>.o` 由编排层在编译时决定（把 rust-msc 输出重命名/直接指定输出名为 `<slot>.o`）。
 
 ### 5.4 共性抽取：enter_upgrade + 重连

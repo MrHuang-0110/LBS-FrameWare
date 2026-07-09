@@ -17,13 +17,13 @@ def _profile(name, protocol):
 
 
 def test_deploy_script_custom_frame_slot0():
-    """单脚本下发到槽 0：编译为 0.o，经 app 通道发送。"""
+    """单脚本下发到槽 0：编译为 0.o，经 app 通道发送。脚本下发不复位/不重连设备。"""
     host_ser, dev_ser = make_fake_serial_pair()
     sim = DeviceSimulator(dev_ser, protocol="custom_frame"); sim.start()
     reopened = []
     def reopen_factory(port, baud):
         reopened.append(port)
-        host_ser.is_open = True  # 模拟同一 FakeSerial 重新枚举（模拟器持续在跑）
+        host_ser.is_open = True
         return host_ser
     t = SerialTransport(host_ser, reopen_factory=reopen_factory); t.start_rx()
     try:
@@ -42,17 +42,20 @@ def test_deploy_script_custom_frame_slot0():
             # 设备应收到 0.o
             assert sim.received_files.get("0.o") == b"\x0F\x70 79o compiled"
             assert "done" in states
-            assert "reconnecting" in states
-            assert reopened == ["COM_FAKE"]
+            # 脚本下发不复位/不重连设备
+            assert "reconnecting" not in states
+            assert reopened == []
     finally:
         t.stop_rx(); sim.stop()
 
 
 def test_deploy_script_ymodem_slot0():
-    """NEXT-AI 单脚本下发到槽 0：编译为 0.o，经 YMODEM 发送。"""
+    """NEXT-AI 单脚本下发到槽 0：编译为 0.o，经 YMODEM 发送。脚本下发不复位设备。"""
     host_ser, dev_ser = make_fake_serial_pair()
     sim = DeviceSimulator(dev_ser, protocol="ymodem"); sim.start()
+    reopened = []
     def reopen_factory(port, baud):
+        reopened.append(port)
         host_ser.is_open = True
         return host_ser
     t = SerialTransport(host_ser, reopen_factory=reopen_factory); t.start_rx()
@@ -67,6 +70,7 @@ def test_deploy_script_ymodem_slot0():
             dep._compile_to_slot = fake_compile
             dep.deploy_script(_profile("NEXT-AI", "ymodem"), "COM_FAKE", py, slot=0)
             assert sim.received_files.get("0.o") == b"\xBB" * 300
+            assert reopened == []  # 不重连
     finally:
         t.stop_rx(); sim.stop()
 
