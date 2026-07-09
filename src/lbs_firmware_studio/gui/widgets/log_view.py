@@ -17,8 +17,8 @@ class LogView(QPlainTextEdit):
 
     def append(self, message: str, level: str = "info") -> None:
         ts = time.strftime("%H:%M:%S")
-        color = _LEVEL_COLOR.get(level, theme.TEXT)
-        self.appendHtml(f'<span style="color:{theme.MUTED}">{ts}</span> '
+        color = _LEVEL_COLOR.get(level, theme.TEXT_PRIMARY)
+        self.appendHtml(f'<span style="color:{theme.TEXT_SECONDARY}">{ts}</span> '
                         f'<span style="color:{color}">{message}</span>')
 
     def plain_text(self) -> str:
