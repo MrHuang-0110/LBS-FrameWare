@@ -12,7 +12,7 @@ class PlaceholderPage(QWidget):
         lay = QVBoxLayout(self)
         lbl = QLabel(self._text)
         lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet(f"color: {theme.MUTED}; font-size: 18px;")
+        lbl.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 18px;")
         lay.addStretch(); lay.addWidget(lbl); lay.addStretch()
 
     def displayed_text(self) -> str:

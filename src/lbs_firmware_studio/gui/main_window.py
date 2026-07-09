@@ -1,13 +1,13 @@
-"""主窗口：顶栏(产品+状态+串口+切换) + 左导航 + 右 QStackedWidget。
-固件更新走 DeployWorker 在 QThread 里跑，信号回主线程更新页面。"""
+"""主窗口：左 Activity Bar + 顶栏 + 右内容区 + 底部 StatusBar（VS Code 风格）。
+固件更新走 DeployWorker(QThread)，信号回主线程。业务接线沿用已修复版本。"""
 from __future__ import annotations
 from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QListWidget, QListWidgetItem, QStackedWidget,
-                               QMessageBox)
-from PySide6.QtCore import Signal, Qt, QThread
+                               QPushButton, QStackedWidget, QMessageBox)
+from PySide6.QtCore import Signal, QThread
 from . import theme
-from .widgets.status_badge import StatusBadge
+from .widgets.activity_bar import ActivityBar
+from .widgets.status_bar import StatusBar
 from .widgets.port_selector import PortSelector
 from .pages.firmware_page import FirmwarePage
 from .pages.settings_page import SettingsPage
@@ -16,9 +16,16 @@ from .worker import DeployWorker
 from ..backend.serial_transport import SerialTransport
 from ..backend.deployer import DeviceDeployer
 
-# 导航项: (标签, 是否可用)
-_NAV = [("固件更新", True), ("脚本下发", False), ("代码编辑", False),
-        ("数据监控", False), ("设置", True)]
+# (key, 中文标签, icon, enabled)
+_NAV = [
+    ("firmware", "固件更新", "fa5s.download", True),
+    ("scripts", "脚本下发", "fa5s.upload", False),
+    ("editor", "代码编辑", "fa5s.code", False),
+    ("monitor", "数据监控", "fa5s.chart-line", False),
+    ("settings", "设置", "fa5s.cog", True),
+]
+_KEY2LABEL = {k: lbl for k, lbl, _, _ in _NAV}
+_LABEL2KEY = {lbl: k for k, lbl, _, _ in _NAV}
 _BUSY_STATES = {"compiling", "connecting", "entering_upgrade", "reconnecting", "transfering"}
 
 
@@ -28,7 +35,6 @@ class MainWindow(QWidget):
     def __init__(self, profile, raw_config: dict, config_path: Path, parent=None):
         super().__init__(parent)
         self._profile = profile
-        # raw/path 必须在 _make_page 之前赋值（构建 设置 页时会用到）
         self._raw = raw_config
         self._path = Path(config_path)
         self._busy = False
@@ -37,49 +43,56 @@ class MainWindow(QWidget):
         self.setWindowTitle(f"LBS Firmware Studio - {profile.name}")
 
         # 顶栏
-        self._product_lbl = QLabel(profile.name)
-        self._product_lbl.setStyleSheet("font-size:16px; font-weight:600;")
-        self._badge = StatusBadge()
+        self._product_lbl = QLabel(f"◆ {profile.name}")
+        self._product_lbl.setStyleSheet(f"font-size:14px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
         self._port = PortSelector()
         self._switch_btn = QPushButton("切换产品")
         self._switch_btn.clicked.connect(self.switch_product_requested.emit)
-        top = QHBoxLayout()
-        top.addWidget(self._product_lbl); top.addWidget(self._badge)
-        top.addStretch(); top.addWidget(self._port); top.addWidget(self._switch_btn)
+        top = QWidget(); top.setFixedHeight(36); top.setStyleSheet(f"background: {theme.BG_BAR};")
+        toplay = QHBoxLayout(top); toplay.setContentsMargins(12, 0, 12, 0)
+        toplay.addWidget(self._product_lbl); toplay.addStretch(1)
+        toplay.addWidget(self._port); toplay.addWidget(self._switch_btn)
 
-        # 左导航 + 右内容
-        self._nav = QListWidget(); self._nav.setFixedWidth(160)
+        # Activity Bar + 页面栈
+        self._activity = ActivityBar([(k, icon, en) for k, _, icon, en in _NAV])
+        self._activity.current_changed.connect(self._on_nav)
         self._stack = QStackedWidget()
-        self._pages = {}
-        for label, enabled in _NAV:
-            item = QListWidgetItem(label if enabled else f"{label} 🔒")
-            if not enabled:
-                item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
-            self._nav.addItem(item)
-            page = self._make_page(label)
-            self._pages[label] = page
+        self._pages: dict[str, QWidget] = {}
+        for key, label, _icon, _en in _NAV:
+            page = self._make_page(key)
+            self._pages[key] = page
             self._stack.addWidget(page)
-        self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
-        self._nav.setCurrentRow(0)
 
-        body = QHBoxLayout()
-        body.addWidget(self._nav); body.addWidget(self._stack, 1)
+        # 底部状态栏
+        self._status = StatusBar()
+        self._status.set_product(profile.name)
+        self._status.set_state("idle")
 
-        outer = QVBoxLayout(self)
-        outer.addLayout(top); outer.addLayout(body, 1)
+        # 组装
+        mid = QWidget()
+        midlay = QHBoxLayout(mid); midlay.setContentsMargins(0, 0, 0, 0); midlay.setSpacing(0)
+        midlay.addWidget(self._activity)
+        midlay.addWidget(self._stack, 1)
 
-        # 固件页信号
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
+        outer.addWidget(top); outer.addWidget(mid, 1); outer.addWidget(self._status)
+
+        # 固件页接线
         self._firmware.set_profile(profile)
         self._firmware.start_requested.connect(self._start_firmware)
+        self._activity.set_current("firmware")
 
-    def _make_page(self, label):
-        if label == "固件更新":
+    def _make_page(self, key):
+        if key == "firmware":
             self._firmware = FirmwarePage(); return self._firmware
-        if label == "设置":
+        if key == "settings":
             return SettingsPage(self._raw, self._path)
-        return PlaceholderPage(label)
+        return PlaceholderPage(_KEY2LABEL[key])
 
-    # ---- 固件更新流程 ----
+    def _on_nav(self, key: str):
+        self._stack.setCurrentWidget(self._pages[key])
+
+    # ---- 固件更新流程（沿用已修复版本）----
     def _start_firmware(self):
         if self._busy or (self._thread is not None and self._thread.isRunning()):
             return
@@ -87,7 +100,7 @@ class MainWindow(QWidget):
         if not port:
             QMessageBox.warning(self, "提示", "未选择串口"); return
         self._busy = True
-        self._firmware.set_busy(True)   # 立即禁用开始按钮，防止排队期间二次点击
+        self._firmware.set_busy(True)
         self._transport = SerialTransport()
         self._deployer = DeviceDeployer(self._transport)
         self._deployer.progress.connect(self._firmware.on_progress)
@@ -102,15 +115,17 @@ class MainWindow(QWidget):
         self._thread.started.connect(self._worker.run_firmware)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._on_finished)
+        self._status.set_connection(port, self._profile.baud)
         self._thread.start()
 
     def _on_state(self, state: str):
-        self._badge.set_state(state)
         self._firmware.on_state(state)
+        self._status.set_state(state)
         self._busy = state in _BUSY_STATES
         self._firmware.set_busy(self._busy)
         self._port.setEnabled(not self._busy)
         self._switch_btn.setEnabled(not self._busy)
+        self._activity.set_locked(self._busy)
 
     def _on_error(self, msg: str):
         QMessageBox.critical(self, "错误", msg)
@@ -120,22 +135,18 @@ class MainWindow(QWidget):
         self._firmware.set_busy(False)
         self._port.setEnabled(True)
         self._switch_btn.setEnabled(True)
+        self._activity.set_locked(False)
 
-    # ---- 测试辅助 ----
+    # ---- 测试访问器（签名不变）----
     def header_text(self): return self._product_lbl.text()
-    def nav_labels(self): return [self._nav.item(i).text().replace(" 🔒", "")
-                                  for i in range(self._nav.count())]
-    def is_nav_enabled(self, label):
-        for i in range(self._nav.count()):
-            if self._nav.item(i).text().replace(" 🔒", "") == label:
-                return bool(self._nav.item(i).flags() & Qt.ItemIsEnabled)
-        return False
-    def navigate(self, label):
-        for i in range(self._nav.count()):
-            if self._nav.item(i).text().replace(" 🔒", "") == label:
-                self._nav.setCurrentRow(i); return
+    def nav_labels(self): return [lbl for _, lbl, _, _ in _NAV]
+    def is_nav_enabled(self, label): return self._activity.is_enabled(_LABEL2KEY[label])
+    def navigate(self, label): self._activity.set_current(_LABEL2KEY[label])
     def current_page_name(self):
-        idx = self._stack.currentIndex()
-        return list(self._pages.keys())[idx]
+        for key, page in self._pages.items():
+            if page is self._stack.currentWidget():
+                return _KEY2LABEL[key]
+        return ""
     def click_switch_product(self): self._switch_btn.click()
     def is_busy(self): return self._busy
+    def status_bar_text(self): return self._status.state_text()

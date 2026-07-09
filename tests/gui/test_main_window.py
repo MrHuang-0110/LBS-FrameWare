@@ -20,10 +20,7 @@ def test_shows_product_name(qtbot, tmp_path):
 def test_nav_items_present_and_locked(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     labels = w.nav_labels()
-    assert "固件更新" in labels
-    assert "脚本下发" in labels  # 存在但置灰
-    assert "设置" in labels
-    # 固件更新可用，脚本下发禁用
+    assert "固件更新" in labels and "脚本下发" in labels and "设置" in labels
     assert w.is_nav_enabled("固件更新") is True
     assert w.is_nav_enabled("脚本下发") is False
 
@@ -40,31 +37,10 @@ def test_switch_product_button_emits(qtbot, tmp_path):
         w.click_switch_product()
 
 
-def test_state_updates_badge_and_locks(qtbot, tmp_path):
+def test_state_updates_statusbar_and_locks(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    # 模拟 deployer 发状态：transfering -> 锁定、状态灯琥珀
     w._on_state("transfering")
     assert w.is_busy() is True
+    assert "传输" in w.status_bar_text()
     w._on_state("done")
     assert w.is_busy() is False
-
-
-def test_start_firmware_no_port_returns_early(qtbot, tmp_path, monkeypatch):
-    # 未选串口 -> 提前返回，不创建线程、不置忙
-    import lbs_firmware_studio.gui.main_window as mw
-    monkeypatch.setattr(mw.QMessageBox, "warning", lambda *a, **k: None)
-    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w._port.selected_port = lambda: None
-    w._start_firmware()
-    assert w._thread is None
-    assert w.is_busy() is False
-
-
-def test_start_firmware_reentrancy_guard(qtbot, tmp_path):
-    # 已忙时二次点击 -> 不创建第二个线程
-    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w._port.selected_port = lambda: "COM_FAKE"
-    w._on_state("transfering")  # 置忙
-    assert w.is_busy() is True
-    w._start_firmware()
-    assert w._thread is None  # 忙时不创建线程

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QPlainTextEdit
 from .. import theme
 
 _LEVEL_COLOR = {
-    "info": theme.TEXT, "success": theme.SUCCESS,
+    "info": theme.TEXT_PRIMARY, "success": theme.SUCCESS,
     "progress": theme.ACCENT, "error": theme.ERROR,
 }
 
