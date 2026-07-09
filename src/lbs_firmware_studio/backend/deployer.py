@@ -30,15 +30,13 @@ class DeviceDeployer(QObject):
     def set_transport(self, transport) -> None:
         self._transport = transport
 
-    def compile_scripts(self, profile: DeviceProfile, py_dir: Path) -> list[Path]:
+    def _compile_to_slot(self, profile: DeviceProfile, py_path: Path, slot: int) -> Path:
+        """把单个 .py 编译成 <slot>.o（设备端按槽位命名）。"""
         self.state_changed.emit("compiling")
-        outs = []
-        for py in sorted(Path(py_dir).glob("*.py")):
-            out = Path(py_dir) / (py.stem + ".py.o")
-            self.log.emit(f"compile {py.name}")
-            compile_py(py, out, profile.compiler_path)
-            outs.append(out)
-        return outs
+        out = Path(py_path).parent / f"{slot}.o"
+        self.log.emit(f"compile {Path(py_path).name} -> {slot}.o")
+        compile_py(Path(py_path), out, profile.compiler_path)
+        return out
 
     def _make_protocol(self, profile: DeviceProfile):
         if profile.protocol == "custom_frame":
@@ -83,26 +81,16 @@ class DeviceDeployer(QObject):
             self.state_changed.emit("error")
             raise
 
-    def deploy_scripts(self, profile: DeviceProfile, port: str, py_dir: Path) -> None:
+    def deploy_script(self, profile: DeviceProfile, port: str, py_path: Path, slot: int = 0) -> None:
+        """把单个 .py 编译为 <slot>.o 并下发到设备对应槽位（阶段1固定 slot=0）。"""
         try:
-            outs = self.compile_scripts(profile, py_dir)
+            o_file = self._compile_to_slot(profile, py_path, slot)
             self.state_changed.emit("connecting")
             proto = self._make_protocol(profile)
             self._enter_and_reconnect(proto, profile, port, firmware=False)
             self.state_changed.emit("transfering")
-            if profile.protocol == "custom_frame":
-                # 脚本作为 app 文件夹下发
-                import tempfile, shutil
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    tmp = Path(tmpdir)
-                    for o in outs:
-                        shutil.copy(o, tmp / o.name)
-                    proto.send_folder(self._transport, tmp, "app", self._on_progress)  # type: ignore[attr-defined]
-            else:
-                if len(outs) > 1:
-                    raise RuntimeError("multi-file YMODEM script deploy not supported in Phase 1a — deploy one .py at a time")
-                for o in outs:
-                    proto.send_file(self._transport, o, self._on_progress, firmware=False)
+            # custom_frame: send_file 用 app 功能码(0xDA) 发单文件；ymodem: send_file 单会话
+            proto.send_file(self._transport, o_file, self._on_progress, firmware=False)
             proto.finish_session(self._transport, firmware=False)
             self.state_changed.emit("done")
         except Exception as e:

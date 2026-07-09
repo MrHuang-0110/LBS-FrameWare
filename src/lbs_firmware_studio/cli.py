@@ -14,7 +14,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--product", help="产品名")
     parser.add_argument("--port", help="串口号")
     parser.add_argument("--firmware", action="store_true", help="固件更新")
-    parser.add_argument("--scripts", metavar="DIR", help="脚本下发，指定 .py 文件夹")
+    parser.add_argument("--script", metavar="FILE", help="脚本下发，指定单个 .py 文件")
+    parser.add_argument("--slot", type=int, default=0, help="目标槽位（默认 0；NEW-AI 0-19，其余 0-9）")
     args = parser.parse_args(argv)
 
     profiles = load_profiles(Path(args.config))
@@ -30,8 +31,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unknown product '{args.product}'; choose from {list(profiles)}")
     profile = profiles[args.product]
 
-    if not (args.firmware or args.scripts):
-        parser.error("需指定 --firmware 或 --scripts DIR")
+    if not (args.firmware or args.script):
+        parser.error("需指定 --firmware 或 --script FILE")
 
     t = SerialTransport()
     dep = DeviceDeployer(t)
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.firmware:
             dep.update_firmware(profile, args.port)
         else:
-            dep.deploy_scripts(profile, args.port, Path(args.scripts))
+            dep.deploy_script(profile, args.port, Path(args.script), slot=args.slot)
         print("\n完成")
         return 0
     except Exception as e:

@@ -225,9 +225,9 @@ compiler_path: ./tools/rust-msc-latest-win10.exe
 | 操作 | 输入 | NEW-AI/SPARK-AI 下发内容 | NEXT-AI 下发内容 |
 |---|---|---|---|
 | 固件更新 | 产品配置里的固件目录 | 全量文件夹：NEW-AI 5 个 / SPARK-AI 2 个 | 单个 `.bin` |
-| 脚本下发 | 用户选的 `.py` 文件夹 | 仅 `app` 文件夹（编译出的 `.py.o`） | `.py.o`（YMODEM 批次） |
+| 脚本下发 | 用户指定的单个 `.py` + 目标槽位 | 单个 `<slot>.o`（app 通道 0xDA） | 单个 `<slot>.o`（YMODEM） |
 
-脚本下发只刷新用户脚本，不碰 boot/config/music，比固件更新轻。脚本下发以**一个 `.py` 文件夹**为单位：选文件夹 -> 编译其中所有 `.py` -> 下发。
+脚本下发按**槽位**：编译单个 `.py` 为 `<slot>.o` 发到设备对应槽（阶段 1 固定槽 0）。只刷新该槽脚本，不碰固件/boot/config。详见 §5.3。
 
 ### 5.2 固件更新流程
 
@@ -260,17 +260,26 @@ compiler_path: ./tools/rust-msc-latest-win10.exe
 5. finish -> close
 ```
 
-### 5.3 脚本下发流程（三款共用骨架，差异在传输）
+### 5.3 脚本下发流程（槽位模型；三款共用骨架，差异在传输）
+
+**槽位模型（2026-07-09 真机澄清）**：设备端脚本按**槽位**存储。NEW-AI 有 0–19 共 20 槽，SPARK-AI / NEXT-AI 各 0–9 共 10 槽。下发即「把编译产物命名为 `<槽位号>.o` 发到该槽」。
+
+- 编译产物命名为 `<slot>.o`（如槽 0 = `0.o`），**不是** `.py.o`。与原工具 `1.py→1.o` 约定一致。
+- **一次只发一个脚本到一个槽。**
+- 阶段 1：槽位**固定为 0**（发 `0.o`）；槽位选择的 UI（图标设定）留到阶段 2/GUI。槽位范围校验（NEW-AI ≤19、其余 ≤9）也留到引入槽位选择时再做——固定 0 恒合法。
+- 下发通道与固件更新完全一致：custom_frame 走 app 功能码 `0xDA`；NEXT-AI 走 YMODEM。
 
 ```
-1. compile: 对所选文件夹内每个 .py，调 pika_compiler.compile(py, out.py.o) -> 得 .py.o 列表
+1. compile: 把用户指定的单个 .py 编译成 <slot>.o（阶段1: 0.o）
 2. open(port, baud)
 3. enter_upgrade + 重连   # 同 5.2 的步骤 2-3，按产品协议
 4. transfer:
-   · NEW-AI/SPARK-AI: 把 .py.o 作为 app 文件夹(cmd=0xDA) 用自定义帧 send_folder 下发
-   · NEXT-AI:         用 YMODEM 批次下发 .py.o（单文件即单次会话；多文件连续批次，设备端是否支持见第 11 节待确认项）
+   · NEW-AI/SPARK-AI: 把 0.o 作为 app 文件(cmd=0xDA) 用自定义帧下发单个文件
+   · NEXT-AI:         用 YMODEM 下发单个 0.o
 5. finish -> close
 ```
+
+> 命名为 `<slot>.o` 由编排层在编译时决定（把 rust-msc 输出重命名/直接指定输出名为 `<slot>.o`）。
 
 ### 5.4 共性抽取：enter_upgrade + 重连
 

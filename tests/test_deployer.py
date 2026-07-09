@@ -16,7 +16,8 @@ def _profile(name, protocol):
                          filename_encoding="gbk")
 
 
-def test_deploy_scripts_custom_frame():
+def test_deploy_script_custom_frame_slot0():
+    """单脚本下发到槽 0：编译为 0.o，经 app 通道发送。"""
     host_ser, dev_ser = make_fake_serial_pair()
     sim = DeviceSimulator(dev_ser, protocol="custom_frame"); sim.start()
     reopened = []
@@ -28,18 +29,44 @@ def test_deploy_scripts_custom_frame():
     try:
         dep = DeviceDeployer(transport=t)
         with tempfile.TemporaryDirectory() as d:
-            (pathlib.Path(d) / "main.py").write_text("print(1)")
-            # 用真编译器会失败；这里 mock compile_scripts 产物
-            dep.compile_scripts = lambda profile, py_dir: [pathlib.Path(py_dir) / "main.py.o"]
-            # 手动造 .py.o
-            (pathlib.Path(d) / "main.py.o").write_bytes(b"\x0F\x70 79o compiled")
+            py = pathlib.Path(d) / "my_remote.py"; py.write_text("print(1)")
+            # mock 编译：把 <slot>.o 造出来（避免调真编译器）
+            def fake_compile(profile, py_path, slot):
+                out = pathlib.Path(d) / f"{slot}.o"
+                out.write_bytes(b"\x0F\x70 79o compiled")
+                return out
+            dep._compile_to_slot = fake_compile
             states = []
             dep.state_changed.connect(lambda s: states.append(s))
-            dep.deploy_scripts(_profile("NEW-AI", "custom_frame"), "COM_FAKE", pathlib.Path(d))
-            assert sim.received_files.get("main.py.o") == b"\x0F\x70 79o compiled"
+            dep.deploy_script(_profile("NEW-AI", "custom_frame"), "COM_FAKE", py, slot=0)
+            # 设备应收到 0.o
+            assert sim.received_files.get("0.o") == b"\x0F\x70 79o compiled"
             assert "done" in states
             assert "reconnecting" in states
             assert reopened == ["COM_FAKE"]
+    finally:
+        t.stop_rx(); sim.stop()
+
+
+def test_deploy_script_ymodem_slot0():
+    """NEXT-AI 单脚本下发到槽 0：编译为 0.o，经 YMODEM 发送。"""
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="ymodem"); sim.start()
+    def reopen_factory(port, baud):
+        host_ser.is_open = True
+        return host_ser
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory); t.start_rx()
+    try:
+        dep = DeviceDeployer(transport=t)
+        with tempfile.TemporaryDirectory() as d:
+            py = pathlib.Path(d) / "script.py"; py.write_text("print(1)")
+            def fake_compile(profile, py_path, slot):
+                out = pathlib.Path(d) / f"{slot}.o"
+                out.write_bytes(b"\xBB" * 300)
+                return out
+            dep._compile_to_slot = fake_compile
+            dep.deploy_script(_profile("NEXT-AI", "ymodem"), "COM_FAKE", py, slot=0)
+            assert sim.received_files.get("0.o") == b"\xBB" * 300
     finally:
         t.stop_rx(); sim.stop()
 
