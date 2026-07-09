@@ -2,6 +2,7 @@ compiler_path: ./tools/rust-msc-latest-win10.exe
 products:
   NEW-AI:
     protocol: custom_frame
+    display_ports: 8
     baud: 115200
     folders: [app, music, boot, config, version]
     firmware_dir: ./products/NEW-AI/fwlib
@@ -16,6 +17,7 @@ products:
     disappear_timeout: 2.0   # 发复位后等端口消失≤2s判为app模式(实测~1.4s)；超2s未断=已在固件模式,直接传输
   SPARK-AI:
     protocol: custom_frame
+    display_ports: 4
     baud: 115200
     folders: [app, version]
     firmware_dir: ./products/SPARK-AI/fwlib
@@ -30,6 +32,7 @@ products:
     disappear_timeout: 2.0
   NEXT-AI:
     protocol: ymodem
+    display_ports: 2
     baud: 115200
     folders: [__single__]
     firmware_dir: ./products/NEXT-AI/fwlib

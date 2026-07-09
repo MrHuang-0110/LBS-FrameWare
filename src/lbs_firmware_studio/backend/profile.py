@@ -24,6 +24,7 @@ class DeviceProfile:
     reopen_delay: float = 2.0
     post_reopen_delay: float = 5.0   # 重开串口成功后等待设备 USB CDC/固件初始化（原工具经验值 5s）
     disappear_timeout: float = 5.0   # 等端口从存在->消失的最长时间（复位到端口消失实测~1.4s）
+    display_ports: int = 0    # 启动卡片展示的端口数(纯展示，不影响协议)
 
 
 def _to_bytes(val) -> bytes:
@@ -58,5 +59,14 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             reopen_delay=cfg.get("reopen_delay", 2.0),
             post_reopen_delay=cfg.get("post_reopen_delay", 5.0),
             disappear_timeout=cfg.get("disappear_timeout", 5.0),
+            display_ports=cfg.get("display_ports", 0),
         )
     return out
+
+
+def save_profiles(raw: dict, path: Path) -> None:
+    """把配置字典写回 YAML。注意 safe_dump 会丢失注释（本阶段接受）。"""
+    path.write_text(
+        yaml.safe_dump(raw, allow_unicode=True, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
