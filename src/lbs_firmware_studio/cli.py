@@ -26,13 +26,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.product:
         parser.error("--product 必填（或用 --list 查看）")
+    if args.product not in profiles:
+        parser.error(f"unknown product '{args.product}'; choose from {list(profiles)}")
     profile = profiles[args.product]
 
     if not (args.firmware or args.scripts):
         parser.error("需指定 --firmware 或 --scripts DIR")
 
-    import serial  # 真机模式才需要
-    t = SerialTransport(serial.Serial(args.port, profile.baud, timeout=0.1))
+    t = SerialTransport()
+    t.open(args.port, profile.baud)  # open() 内构造真实 serial 并拉低 DTR/RTS
     t.start_rx()
     dep = DeviceDeployer(t)
     dep.log.connect(lambda s: print(s))

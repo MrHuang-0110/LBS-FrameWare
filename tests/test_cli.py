@@ -1,4 +1,3 @@
-import subprocess, sys
 from lbs_firmware_studio.cli import main
 
 
