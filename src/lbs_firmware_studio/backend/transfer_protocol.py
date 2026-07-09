@@ -6,6 +6,7 @@ from typing import Callable
 import time
 
 from . import protocol_frame as pf
+from . import ymodem as ym
 from .serial_transport import SerialTransport
 
 ProgressCb = Callable[[int, int], None]
@@ -88,3 +89,89 @@ class CustomFrameProtocol(TransferProtocol):
 
     def _last_frame_timeout(self) -> float:
         return {"wait_2s": 2.0, "wait_30s": 30.0, "skip": 0.5}[self.last_frame_ack]
+
+
+class YmodemProtocol(TransferProtocol):
+    def __init__(self, block_size: int = 1024, ack_timeout: float = 12.0,
+                 crc_wait: float = 120.0, max_retries: int = 3,
+                 usb_quick_exit: bool = True):
+        self.block_size = block_size
+        self.ack_timeout = ack_timeout
+        self.crc_wait = crc_wait
+        self.max_retries = max_retries
+        self.usb_quick_exit = usb_quick_exit
+
+    def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool) -> None:
+        cmd = b"ymodem update fmware\r\n" if firmware else b"ymodem\r\n"
+        t.write(cmd)
+
+    def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
+        data = path.read_bytes()
+        name = path.name.encode("ascii", errors="replace")
+        header = name + b"\x00" + str(len(data)).encode("ascii") + b"\x00"
+        if len(header) > 128:
+            raise ValueError("filename too long")
+        # 1. 等 'C'
+        self._wait_control(t, ym.CRC_C, self.crc_wait, firmware=firmware)
+        # 2. 文件头 (SOH/128, seq=0)
+        self._send_packet_wait(t, ym.make_packet(0, header, 128), firmware=firmware)
+        self._wait_control(t, ym.CRC_C, self.ack_timeout, firmware=firmware)
+        # 3. 数据块
+        seq = 1
+        offset = 0
+        total = len(data)
+        while offset < total:
+            chunk = data[offset:offset + self.block_size]
+            self._send_packet_wait(t, ym.make_packet(seq, chunk, self.block_size), firmware=firmware)
+            offset += self.block_size
+            seq = seq + 1 if seq < 255 else 1
+            on_progress(min(offset, total), total)
+        # 4. 收尾 EOT 双发 + 空结束块
+        self._finish(t, firmware)
+
+    def finish_session(self, t: SerialTransport, *, firmware: bool) -> None:
+        pass
+
+    def _send_packet_wait(self, t: SerialTransport, pkt: bytes, *, firmware: bool) -> None:
+        for attempt in range(self.max_retries):
+            t.write(pkt)
+            try:
+                self._wait_control(t, ym.ACK, self.ack_timeout, firmware=firmware)
+                return
+            except TimeoutError:
+                if attempt == self.max_retries - 1:
+                    if firmware and self.usb_quick_exit:
+                        return  # Boot 复位断线视为完成
+                    raise
+
+    def _finish(self, t: SerialTransport, firmware: bool) -> None:
+        try:
+            t.write(bytes([ym.EOT]))
+            self._wait_control(t, ym.NAK, self.ack_timeout, firmware=firmware)
+            t.write(bytes([ym.EOT]))
+            self._wait_control(t, ym.ACK, self.ack_timeout, firmware=firmware)
+            self._wait_control(t, ym.CRC_C, self.ack_timeout, firmware=firmware)
+            t.write(ym.make_packet(0, b"", 128))  # 空结束块
+            self._wait_control(t, ym.ACK, self.ack_timeout, firmware=firmware)
+        except (TimeoutError, OSError):
+            if firmware and self.usb_quick_exit:
+                return  # USB 复位断线，视为完成
+            raise
+
+    def _wait_control(self, t: SerialTransport, expected: int, timeout: float, *, firmware: bool) -> None:
+        """容错等待控制字节：跳过可打印字符（JSON 干扰），忽略杂散 'C'（除非期望 'C'）。"""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            b = t.read_byte(timeout=max(0.05, deadline - time.monotonic()))
+            if b is None:
+                continue
+            if b == ym.CAN:
+                raise RuntimeError("device cancelled (CAN)")
+            if b == expected:
+                return
+            if b == ym.CRC_C and expected != ym.CRC_C:
+                continue  # 忽略杂散 'C'
+            if 0x20 <= b <= 0x7E:
+                continue  # 跳过可打印 JSON 字符
+            # 其它非期望控制字节：继续等
+        raise TimeoutError(f"timeout waiting for 0x{expected:02X}")
