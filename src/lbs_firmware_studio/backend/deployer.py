@@ -42,8 +42,10 @@ class DeviceDeployer(QObject):
         if profile.protocol == "custom_frame":
             return CustomFrameProtocol(chunk_size=profile.chunk_size, ack_timeout=profile.ack_timeout,
                                        last_frame_ack=profile.last_frame_ack,
-                                       filename_encoding=profile.filename_encoding)
-        return YmodemProtocol(block_size=profile.chunk_size, ack_timeout=12.0)
+                                       filename_encoding=profile.filename_encoding,
+                                       log_cb=self.log.emit)
+        return YmodemProtocol(block_size=profile.chunk_size, ack_timeout=12.0,
+                              log_cb=self.log.emit)
 
     def _enter_and_reconnect(self, proto, profile: DeviceProfile, port: str, *, firmware: bool) -> None:
         """进入升级模式 -> USB 复位 -> 轮询重连 -> 重新武装 RX（spec §5.2-5.4 强制流程）。"""

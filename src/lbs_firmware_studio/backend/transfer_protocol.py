@@ -24,12 +24,14 @@ class TransferProtocol(ABC):
 class CustomFrameProtocol(TransferProtocol):
     def __init__(self, chunk_size: int = 248, ack_timeout: float = 2.0,
                  last_frame_ack: str = "wait_2s", max_retries: int = 3,
-                 filename_encoding: str = "gbk"):
+                 filename_encoding: str = "gbk",
+                 log_cb: "Callable[[str], None] | None" = None):
         self.chunk_size = min(chunk_size, pf.MAX_DATA_LEN)
         self.ack_timeout = ack_timeout
         self.last_frame_ack = last_frame_ack
         self.max_retries = max_retries
         self.filename_encoding = filename_encoding
+        self.log_cb = log_cb
 
     def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool, enter_cmd: bytes | None = None) -> None:
         cmd = enter_cmd if enter_cmd else b"RESET_FWLIB"
@@ -47,6 +49,8 @@ class CustomFrameProtocol(TransferProtocol):
     def _send_file_with_cmd(self, t, path, cmd, on_progress):
         name = path.name.encode(self.filename_encoding)
         data = path.read_bytes()
+        if self.log_cb:
+            self.log_cb(f"发送 {path.name}")
         self._send_and_wait(t, pf.build_frame(cmd, name))
         time.sleep(0.05)
         total = len(data); sent = 0
@@ -126,12 +130,14 @@ class CustomFrameProtocol(TransferProtocol):
 class YmodemProtocol(TransferProtocol):
     def __init__(self, block_size: int = 1024, ack_timeout: float = 12.0,
                  crc_wait: float = 120.0, max_retries: int = 3,
-                 usb_quick_exit: bool = True):
+                 usb_quick_exit: bool = True,
+                 log_cb: "Callable[[str], None] | None" = None):
         self.block_size = block_size
         self.ack_timeout = ack_timeout
         self.crc_wait = crc_wait
         self.max_retries = max_retries
         self.usb_quick_exit = usb_quick_exit
+        self.log_cb = log_cb
 
     def enter_upgrade_mode(self, t: SerialTransport, *, firmware: bool, enter_cmd: bytes | None = None) -> None:
         if enter_cmd:
@@ -142,6 +148,8 @@ class YmodemProtocol(TransferProtocol):
 
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
         data = path.read_bytes()
+        if self.log_cb:
+            self.log_cb(f"发送 {path.name}")
         name = path.name.encode("ascii", errors="replace")
         header = name + b"\x00" + str(len(data)).encode("ascii") + b"\x00"
         if len(header) > 128:
