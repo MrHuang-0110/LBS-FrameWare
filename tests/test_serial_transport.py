@@ -95,10 +95,12 @@ def test_wait_for_reopen_with_factory_rearms_rx():
         host_ser.is_open = True  # 模拟同一 FakeSerial 重新枚举
         return host_ser
 
-    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
+    # 端口始终存在(设备已在固件模式/不重枚举场景) -> 退化为直接打开
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory,
+                        port_lister=lambda: {"COM_FAKE"})
     t.start_rx()
     try:
-        ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=0.05)
+        ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=0.05, disappear_timeout=0.2)
         assert ok is True
         # 重连后 RX 线程应已重新武装：对端写的字节能被 read_byte 收到
         dev_ser.write(b"\x42")
@@ -107,19 +109,47 @@ def test_wait_for_reopen_with_factory_rearms_rx():
         t.stop_rx()
 
 
+def test_wait_for_reopen_waits_disappear_then_reappear():
+    """真机场景：复位后端口先消失再重现，wait_for_reopen 必须等到重现后才打开。
+    否则会打开即将失效的旧句柄 -> 首次写入 winerror 22。"""
+    host_ser, _ = make_fake_serial_pair()
+    # 模拟端口存在性时间线：前若干次探测=存在，中间=消失，之后=重现
+    seq = iter([True, True, False, False, False, True, True, True, True, True])
+    present = {"v": True}
+    def lister():
+        try:
+            present["v"] = next(seq)
+        except StopIteration:
+            pass
+        return {"COM_FAKE"} if present["v"] else set()
+    opened_when = {"port_present_at_open": None}
+    def reopen_factory(port, baud):
+        opened_when["port_present_at_open"] = present["v"]  # 打开时端口应为「存在」
+        host_ser.is_open = True
+        return host_ser
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory, port_lister=lister)
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=5, delay=0.02, disappear_timeout=1.0)
+    assert ok is True
+    # 关键：打开发生在端口「重现(存在)」之后，而非消失窗口里
+    assert opened_when["port_present_at_open"] is True
+
+
 def test_wait_for_reopen_waits_post_delay(monkeypatch):
     """重开成功后必须等待 post_delay，让 USB CDC/设备初始化完成再返回（修 winerror 22）。"""
     import lbs_firmware_studio.backend.serial_transport as st
     host_ser, _ = make_fake_serial_pair()
     slept = []
+    real_sleep = st.time.sleep
     monkeypatch.setattr(st.time, "sleep", lambda s: slept.append(s))
 
     def reopen_factory(port, baud):
         host_ser.is_open = True
         return host_ser
 
-    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
-    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=2.0, post_delay=5.0)
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory,
+                        port_lister=lambda: {"COM_FAKE"})  # 端口常在->直接开
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=2.0, post_delay=5.0,
+                           disappear_timeout=0.0)
     assert ok is True
     # 成功那次的 5.0s 初始化等待必须发生在返回前
     assert 5.0 in slept
@@ -136,7 +166,9 @@ def test_wait_for_reopen_no_post_delay_when_zero(monkeypatch):
         host_ser.is_open = True
         return host_ser
 
-    t = SerialTransport(host_ser, reopen_factory=reopen_factory)
-    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=1.0, post_delay=0.0)
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory,
+                        port_lister=lambda: {"COM_FAKE"})
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=3, delay=1.0, post_delay=0.0,
+                           disappear_timeout=0.0)
     assert ok is True
     assert 0.0 not in slept  # post_delay=0 不触发额外 sleep(0)

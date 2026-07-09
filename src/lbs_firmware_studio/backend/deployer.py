@@ -52,7 +52,8 @@ class DeviceDeployer(QObject):
         proto.enter_upgrade_mode(self._transport, firmware=firmware, enter_cmd=enter_cmd)
         self.state_changed.emit("reconnecting")
         ok = self._transport.wait_for_reopen(port, profile.baud, profile.reopen_retries,
-                                             profile.reopen_delay, profile.post_reopen_delay)
+                                             profile.reopen_delay, profile.post_reopen_delay,
+                                             profile.disappear_timeout)
         if not ok:
             raise RuntimeError(f"device did not re-enumerate on {port}")
         self._transport.start_rx()  # wait_for_reopen 内的 close() 停了 RX 线程，这里再武装

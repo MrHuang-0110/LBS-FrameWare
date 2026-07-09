@@ -13,7 +13,9 @@ def _profile(name, protocol):
                          folders=["app"] if protocol=="custom_frame" else ["__single__"],
                          chunk_size=248 if protocol=="custom_frame" else 1024,
                          last_frame_ack="wait_2s" if protocol=="custom_frame" else "skip",
-                         filename_encoding="gbk")
+                         filename_encoding="gbk",
+                         reopen_retries=3, reopen_delay=0.02, post_reopen_delay=0.0,
+                         disappear_timeout=0.0)
 
 
 def test_deploy_script_custom_frame_slot0():

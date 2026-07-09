@@ -11,9 +11,11 @@ except ImportError:  # 测试环境用 FakeSerial，pyserial 可能未装
 
 
 class SerialTransport:
-    def __init__(self, serial_obj=None, reopen_factory: "Callable[[str, int], object] | None" = None):
+    def __init__(self, serial_obj=None, reopen_factory: "Callable[[str, int], object] | None" = None,
+                 port_lister: "Callable[[], set[str]] | None" = None):
         self._serial = serial_obj
         self._reopen_factory = reopen_factory
+        self._port_lister = port_lister  # 返回当前存在的端口名集合；None=用 pyserial 探测
         self._rx_queue: queue.Queue[int] = queue.Queue()
         self._data_handler: Callable[[bytes], None] | None = None
         self._stop = threading.Event()
@@ -21,6 +23,14 @@ class SerialTransport:
 
     def set_reopen_factory(self, factory: "Callable[[str, int], object] | None") -> None:
         self._reopen_factory = factory
+
+    def _port_present(self, port: str) -> bool:
+        """端口当前是否存在。测试可注入 port_lister；生产用 pyserial。"""
+        if self._port_lister is not None:
+            return port in self._port_lister()
+        if serial is not None:
+            return port in {p.device for p in serial.tools.list_ports.comports()}
+        return True
 
     @property
     def is_open(self) -> bool:
@@ -104,11 +114,38 @@ class SerialTransport:
             return None
 
     def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
-                        post_delay: float = 0.0) -> bool:
+                        post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:
+        """复位后重连。真机上复位帧发出到端口消失有延迟(实测~1.4s)，若 close 后
+        固定睡一小段就抢开，会打开一个「即将失效」的旧句柄 -> 首次写入 winerror 22。
+        正确顺序：等端口真正消失 -> 等它重现 -> 再打开 -> 等设备初始化(post_delay)。
+
+        若在 disappear_timeout 内端口始终未消失（设备已在固件模式/不重枚举），
+        则退化为直接打开（覆盖「第二次运行」场景）。
+        """
         was_rx = self._thread is not None and self._thread.is_alive()
         self.close()
+
+        # 阶段1：等端口从「存在」变为「消失」（USB 重新枚举开始）
+        deadline = time.monotonic() + disappear_timeout
+        disappeared = False
+        while time.monotonic() < deadline:
+            if not self._port_present(port):
+                disappeared = True
+                break
+            time.sleep(0.05)
+
+        # 阶段2：若发生了消失，等它重现
+        if disappeared:
+            reappear_deadline = time.monotonic() + max(delay * retries, disappear_timeout)
+            while time.monotonic() < reappear_deadline:
+                if self._port_present(port):
+                    break
+                time.sleep(0.05)
+
+        # 阶段3：端口就绪，尝试打开（带重试），成功后等设备初始化
         for attempt in range(retries):
-            time.sleep(delay if attempt else min(delay, 0.5))
+            if attempt:
+                time.sleep(delay)
             try:
                 if self._reopen_factory is not None:
                     self._serial = self._reopen_factory(port, baud)
