@@ -21,6 +21,7 @@ class ActivityBar(QWidget):
         self.setStyleSheet(f"background: {theme.BG_BAR};")
         self._items = items
         self._buttons: dict[str, QToolButton] = {}
+        self._icon_colors: dict[str, str] = {}
         self._current: str | None = None
         self._locked = False
 
@@ -41,6 +42,7 @@ class ActivityBar(QWidget):
         btn.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
         color = theme.ICON_IDLE if enabled else theme.ICON_DISABLED
         btn.setIcon(qta.icon(icon_name, color=color))
+        self._icon_colors[key] = color
         btn.setStyleSheet("QToolButton { border: none; background: transparent; }")
         btn.setEnabled(enabled)
         if enabled:
@@ -65,7 +67,13 @@ class ActivityBar(QWidget):
             if not btn.isEnabled():
                 continue
             selected = (key == self._current)
-            color = theme.TEXT_ON_ACCENT if selected else theme.ICON_IDLE
+            if selected:
+                color = theme.TEXT_ON_ACCENT
+            elif self._locked:
+                color = theme.ICON_DISABLED   # 锁定时置灰非当前项，给出视觉提示
+            else:
+                color = theme.ICON_IDLE
+            self._icon_colors[key] = color
             btn.setIcon(qta.icon(self._icon_names[key], color=color))
             # 选中：左侧 2px 蓝亮条 + 轻背景
             if selected:
@@ -84,5 +92,10 @@ class ActivityBar(QWidget):
     def is_enabled(self, key: str) -> bool:
         return self._buttons[key].isEnabled()
 
+    def icon_color(self, key: str) -> str:
+        """当前应用于该项图标的颜色（供测试断言锁定置灰效果）。"""
+        return self._icon_colors.get(key, "")
+
     def set_locked(self, locked: bool) -> None:
         self._locked = locked
+        self._restyle()

@@ -1,4 +1,5 @@
 from lbs_firmware_studio.gui.widgets.activity_bar import ActivityBar
+from lbs_firmware_studio.gui import theme
 
 # items: (key, icon_name, enabled)
 _ITEMS = [
@@ -39,3 +40,17 @@ def test_set_locked_blocks_switch(qtbot):
     w.set_locked(False)
     w.set_current("settings")
     assert w.current_key() == "settings"
+
+
+def test_locked_dims_non_current_enabled_icons(qtbot):
+    w = ActivityBar(_ITEMS); qtbot.addWidget(w)
+    w.set_current("firmware")   # current
+    w.set_locked(True)
+    # 当前项保持选中样式（白色），非当前启用项置灰
+    assert w.icon_color("firmware") == theme.TEXT_ON_ACCENT
+    assert w.icon_color("settings") == theme.ICON_DISABLED
+    # 解锁后恢复：当前仍白，其余回到 idle
+    w.set_locked(False)
+    assert w.current_key() == "firmware"
+    assert w.icon_color("firmware") == theme.TEXT_ON_ACCENT
+    assert w.icon_color("settings") == theme.ICON_IDLE

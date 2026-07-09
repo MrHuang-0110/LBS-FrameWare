@@ -136,6 +136,7 @@ class MainWindow(QWidget):
         self._port.setEnabled(True)
         self._switch_btn.setEnabled(True)
         self._activity.set_locked(False)
+        self._status.set_connection(None, None)
 
     # ---- 测试访问器（签名不变）----
     def header_text(self): return self._product_lbl.text()
