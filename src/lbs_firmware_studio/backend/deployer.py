@@ -84,10 +84,11 @@ class DeviceDeployer(QObject):
             if profile.protocol == "custom_frame":
                 # 脚本作为 app 文件夹下发
                 import tempfile, shutil
-                tmp = Path(tempfile.mkdtemp())
-                for o in outs:
-                    shutil.copy(o, tmp / o.name)
-                proto.send_folder(self._transport, tmp, "app", self._on_progress)  # type: ignore[attr-defined]
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp = Path(tmpdir)
+                    for o in outs:
+                        shutil.copy(o, tmp / o.name)
+                    proto.send_folder(self._transport, tmp, "app", self._on_progress)  # type: ignore[attr-defined]
             else:
                 for o in outs:
                     proto.send_file(self._transport, o, self._on_progress, firmware=False)
