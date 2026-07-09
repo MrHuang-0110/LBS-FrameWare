@@ -35,7 +35,7 @@ def test_worker_runs_firmware_and_emits_finished(qtbot):
             states = []
             dep.state_changed.connect(lambda s: states.append(s))
             with qtbot.waitSignal(worker.finished, timeout=5000):
-                worker.run_firmware(_profile(d), "COM_FAKE")
+                worker.set_job(_profile(d), "COM_FAKE"); worker.run_firmware()
             assert "done" in states
             assert sim.received_files.get("0.o") == b"firmware data"
     finally:
@@ -56,7 +56,7 @@ def test_worker_emits_finished_on_error(qtbot):
             errors = []
             dep.error.connect(lambda e: errors.append(e))
             with qtbot.waitSignal(worker.finished, timeout=5000):
-                worker.run_firmware(prof, "COM_FAKE")
+                worker.set_job(prof, "COM_FAKE"); worker.run_firmware()
             assert errors  # 有错误上报
     finally:
         t.stop_rx(); sim_close(t)
@@ -79,7 +79,7 @@ def test_worker_reports_open_failure(qtbot):
         errors = []
         dep.error.connect(lambda e: errors.append(e))
         with qtbot.waitSignal(worker.finished, timeout=5000):
-            worker.run_firmware(_profile(d), "COM_FAKE")
+            worker.set_job(_profile(d), "COM_FAKE"); worker.run_firmware()
         assert errors  # open() 失败已上报
         assert any("port busy" in e for e in errors)
 
@@ -87,3 +87,34 @@ def test_worker_reports_open_failure(qtbot):
 def sim_close(t):
     try: t.stop_rx()
     except Exception: pass
+
+
+def test_run_firmware_executes_off_main_thread(qtbot):
+    """回归锁定：用 MainWindow 的接线方式(moveToThread + started 直连 run_firmware 槽)，
+    run_firmware 必须在子线程执行，绝不在主线程——否则阻塞式串口 I/O 会卡死 GUI。
+    历史 bug: started.connect(lambda: worker.run_firmware(...)) 会跑在主线程。"""
+    import threading
+    from PySide6.QtCore import QThread
+
+    class _Probe:
+        """替身 transport：open 时记录线程 ident，不做真 I/O。"""
+        ran_thread = None
+        def open(self, port, baud): _Probe.ran_thread = threading.get_ident()
+        def start_rx(self): pass
+        def close(self): pass
+
+    main_ident = threading.get_ident()
+    probe = _Probe()
+    dep = DeviceDeployer(probe)
+    thread = QThread()
+    worker = DeployWorker(probe, dep)
+    with tempfile.TemporaryDirectory() as d:
+        worker.set_job(_profile(d), "COM_FAKE")
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run_firmware)   # ← MainWindow 的正确接线
+        worker.finished.connect(thread.quit)
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            thread.start()
+        thread.wait(3000)
+    assert _Probe.ran_thread is not None
+    assert _Probe.ran_thread != main_ident, "run_firmware 跑在主线程 => GUI 会卡死"

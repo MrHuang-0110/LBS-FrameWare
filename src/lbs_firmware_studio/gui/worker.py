@@ -3,14 +3,19 @@
 用法（MainWindow 里）：
     thread = QThread()
     worker = DeployWorker(transport, deployer)
+    worker.set_job(profile, port)          # 先存参数
     worker.moveToThread(thread)
-    thread.started.connect(lambda: worker.run_firmware(profile, port))
+    thread.started.connect(worker.run_firmware)   # 直连 worker 的槽(带线程affinity)，勿用 lambda
     worker.finished.connect(thread.quit)
     thread.start()
 本 worker 复用 deployer 的 progress/log/state_changed/error 信号（已是 Qt Signal）。
+
+重要：started 必须直连 worker 自己的槽方法 run_firmware（无参），不能用
+`lambda: worker.run_firmware(profile, port)`——lambda 无线程 affinity，会在主线程
+执行，导致阻塞式串口 I/O 卡死 GUI（已用线程测试验证）。故参数改为 set_job 预存。
 """
 from __future__ import annotations
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 
 class DeployWorker(QObject):
@@ -20,8 +25,17 @@ class DeployWorker(QObject):
         super().__init__(parent)
         self._transport = transport
         self._deployer = deployer
+        self._profile = None
+        self._port = None
 
-    def run_firmware(self, profile, port: str) -> None:
+    def set_job(self, profile, port: str) -> None:
+        """在 moveToThread 前预存本次固件更新的参数（供无参槽 run_firmware 读取）。"""
+        self._profile = profile
+        self._port = port
+
+    @Slot()
+    def run_firmware(self) -> None:
+        profile, port = self._profile, self._port
         try:
             self._transport.open(port, profile.baud)
             self._transport.start_rx()

@@ -96,8 +96,10 @@ class MainWindow(QWidget):
         self._deployer.error.connect(self._on_error)
         self._thread = QThread()
         self._worker = DeployWorker(self._transport, self._deployer)
+        self._worker.set_job(self._profile, port)
         self._worker.moveToThread(self._thread)
-        self._thread.started.connect(lambda: self._worker.run_firmware(self._profile, port))
+        # 直连 worker 的槽(带子线程 affinity)，勿用 lambda——否则工作会跑在主线程卡死 GUI
+        self._thread.started.connect(self._worker.run_firmware)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._on_finished)
         self._thread.start()
