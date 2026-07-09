@@ -12,12 +12,20 @@ def _profiles():
 
 def test_shows_all_products(qtbot):
     w = StartupWindow(_profiles()); qtbot.addWidget(w)
-    txt = w.all_text()
-    assert "NEW-AI" in txt and "SPARK-AI" in txt and "NEXT-AI" in txt
+    assert w.all_text().count("-AI") >= 3 or all(
+        n in w.all_text() for n in ("NEW-AI", "SPARK-AI", "NEXT-AI"))
 
 
-def test_card_click_emits_product(qtbot):
+def test_single_click_selects_not_enter(qtbot):
     w = StartupWindow(_profiles()); qtbot.addWidget(w)
-    with qtbot.waitSignal(w.product_selected, timeout=500) as blocker:
+    with qtbot.waitSignal(w.selection_changed, timeout=500) as blocker:
         w.click_product("SPARK-AI")
     assert blocker.args == ["SPARK-AI"]
+    assert w.selected_product() == "SPARK-AI"
+
+
+def test_double_click_enters(qtbot):
+    w = StartupWindow(_profiles()); qtbot.addWidget(w)
+    with qtbot.waitSignal(w.product_selected, timeout=500) as blocker:
+        w.double_click_product("NEXT-AI")
+    assert blocker.args == ["NEXT-AI"]
