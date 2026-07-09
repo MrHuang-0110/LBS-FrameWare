@@ -5,3 +5,5 @@ dist/
 *.egg-info/
 .pytest_cache/
 compile_log.txt
+products/
+scripts/diag_*.py
