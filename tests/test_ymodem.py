@@ -17,7 +17,7 @@ def test_make_packet_1024_pads_and_marks_stx():
     assert pkt[1] == 1 and pkt[2] == (~1) & 0xFF
     body = pkt[3:-2]
     assert len(body) == 1024
-    assert body[:10] == payload and body[10:] == b"\x00" * (1024 - 10)
+    assert body[:10] == payload and body[10:] == b"\x1a" * (1024 - 10)
     assert pkt[-2:] == struct.pack(">H", crc16_xmodem(body))
 
 def test_make_packet_128_uses_soh():

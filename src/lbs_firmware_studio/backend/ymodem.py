@@ -31,7 +31,7 @@ def make_packet(seq: int, payload: bytes, block_size: int) -> bytes:
         raise ValueError(f"block_size must be 128 or 1024, got {block_size}")
     if len(payload) > block_size:
         raise ValueError("payload too large")
-    body = payload + bytes(block_size - len(payload))
+    body = payload + bytes([0x1A]) * (block_size - len(payload))
     mark = SOH if block_size == BLOCK_128 else STX
     header = bytes([mark, seq & 0xFF, (~seq) & 0xFF])
     return header + body + struct.pack(">H", crc16_xmodem(body))
