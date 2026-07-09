@@ -6,6 +6,7 @@ dependencies = ["pyserial>=3.5", "PyYAML>=6.0"]
 
 [project.scripts]
 lbs-firmware = "lbs_firmware_studio.cli:main"
+lbs-firmware-gui = "lbs_firmware_studio.gui.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
