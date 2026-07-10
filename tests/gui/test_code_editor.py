@@ -26,20 +26,60 @@ def test_set_get_text_roundtrip(qtbot):
     assert ed.text() == "import time\nx = 1\n"
 
 
-def _has_colored_run(ed):
-    # 高亮器把格式写进 document 的 layout additionalFormats；
-    # 断言首个 block 至少有一段非默认前景色（即高亮生效）。
+def _fg_at(ed, start, length):
+    # 精确定位首个 block 中 [start, start+length) 这一段的字符格式；
+    # 找不到返回 None（不做任何兜底放行）。
+    # 返回 QTextCharFormat 的副本，避免底层 C++ 临时对象被回收。
+    from PySide6.QtGui import QTextCharFormat
     block = ed.document().firstBlock()
-    fmts = block.layout().formats() if block.layout() else []
-    return any(f.format.foreground().color().name() != "#000000" for f in fmts) or bool(fmts)
+    layout = block.layout()
+    for r in (layout.formats() if layout else []):
+        if r.start == start and r.length == length:
+            return QTextCharFormat(r.format)
+    return None
 
 
 def test_highlighter_colors_keywords(qtbot):
+    from lbs_firmware_studio.gui import theme
+    from PySide6.QtGui import QFont
     ed = CodeEditor(); qtbot.addWidget(ed)
     ed.set_text("import time  # comment")
-    # 触发一次布局
     ed.document().firstBlock().layout()
-    assert _has_colored_run(ed)
+
+    # 关键字 span：'import' → ACCENT + Bold
+    kw = _fg_at(ed, 0, len("import"))
+    assert kw is not None, "关键字 'import' span 未定位到"
+    assert kw.foreground().color().name().lower() == theme.ACCENT.lower()
+    assert kw.fontWeight() == QFont.Bold
+
+    # 注释 span：'# comment' 从第 13 列到行尾 → TEXT_DISABLED + Italic
+    text = "import time  # comment"
+    hash_idx = text.find("#")
+    assert hash_idx == 13
+    comment = _fg_at(ed, hash_idx, len(text) - hash_idx)
+    assert comment is not None, "注释 span 未定位到"
+    assert comment.foreground().color().name().lower() == theme.TEXT_DISABLED.lower()
+    assert comment.fontItalic() is True
+
+
+def test_highlighter_colors_strings(qtbot):
+    from lbs_firmware_studio.gui import theme
+    ed = CodeEditor(); qtbot.addWidget(ed)
+    ed.set_text("s = 'hi'")            # 字符串 'hi' 从第 4 列，长度 4
+    ed.document().firstBlock().layout()
+    s = _fg_at(ed, 4, len("'hi'"))
+    assert s is not None, "字符串 span 未定位到"
+    assert s.foreground().color().name().lower() == theme.SUCCESS.lower()
+
+
+def test_highlighter_colors_numbers(qtbot):
+    from lbs_firmware_studio.gui import theme
+    ed = CodeEditor(); qtbot.addWidget(ed)
+    ed.set_text("x = 42")              # 数字 42 从第 4 列，长度 2
+    ed.document().firstBlock().layout()
+    n = _fg_at(ed, 4, len("42"))
+    assert n is not None, "数字 span 未定位到"
+    assert n.foreground().color().name().lower() == theme.WARNING.lower()
 
 
 def test_highlighter_instance_attached(qtbot):
