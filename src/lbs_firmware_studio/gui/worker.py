@@ -27,11 +27,15 @@ class DeployWorker(QObject):
         self._deployer = deployer
         self._profile = None
         self._port = None
+        self._py_path = None
+        self._slot = 0
 
-    def set_job(self, profile, port: str) -> None:
-        """在 moveToThread 前预存本次固件更新的参数（供无参槽 run_firmware 读取）。"""
+    def set_job(self, profile, port: str, py_path=None, slot: int = 0) -> None:
+        """预存本次任务参数。固件更新只需 profile/port；脚本下发另带 py_path/slot。"""
         self._profile = profile
         self._port = port
+        self._py_path = py_path
+        self._slot = slot
 
     @Slot()
     def run_firmware(self) -> None:
@@ -49,6 +53,31 @@ class DeployWorker(QObject):
                 self._deployer.state_changed.emit("error")
             except Exception:
                 pass
+        finally:
+            try:
+                self._transport.close()
+            except Exception:
+                pass
+            self.finished.emit()
+
+    @Slot()
+    def run_script(self) -> None:
+        profile, port = self._profile, self._port
+        opened = False
+        try:
+            self._transport.open(port, profile.baud)
+            self._transport.start_rx()
+            opened = True
+            self._deployer.deploy_script(profile, port, self._py_path, self._slot)
+        except Exception as e:
+            # open/start_rx 阶段失败时 deployer 尚未上报，需补发；
+            # deploy_script 自身失败已 emit 过 error，不再重复补发。
+            if not opened:
+                try:
+                    self._deployer.error.emit(f"打开串口失败: {e}")
+                    self._deployer.state_changed.emit("error")
+                except Exception:
+                    pass
         finally:
             try:
                 self._transport.close()

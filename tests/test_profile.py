@@ -44,3 +44,25 @@ def test_load_three_products(tmp_path):
     assert nxt.protocol == "ymodem"
     assert nxt.script_enter_cmd == b"ymodem\r\n"
     assert nxt.firmware_enter_cmd == b"ymodem update fmware\r\n"
+
+
+def test_max_slot_and_templates_dir(tmp_path):
+    import textwrap as _tw
+    from pathlib import Path
+    yaml_text = _tw.dedent("""
+        compiler_path: ./tools/rust-msc-latest-win10.exe
+        products:
+          NEW-AI:
+            protocol: custom_frame
+            firmware_dir: ./products/NEW-AI/fwlib
+            max_slot: 19
+          NEXT-AI:
+            protocol: ymodem
+            firmware_dir: ./products/NEXT-AI/fwlib
+    """)
+    p = tmp_path / "products.yaml"; p.write_text(yaml_text)
+    profiles = load_profiles(p)
+    assert profiles["NEW-AI"].max_slot == 19
+    assert profiles["NEXT-AI"].max_slot == 0   # 未配置默认 0
+    # templates_dir 推导为 firmware_dir 的父目录下的 templates
+    assert profiles["NEW-AI"].templates_dir == Path("./products/NEW-AI") / "templates"

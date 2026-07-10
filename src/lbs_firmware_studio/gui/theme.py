@@ -29,6 +29,13 @@ PRODUCT_GREEN = "#4EC9B0"   # 产品名绿色（同 SUCCESS，语义化别名）
 UI_FONT = "'Inter', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif"
 MONO_FONT = "'Cascadia Code', 'Consolas', monospace"
 
+# 部署状态 -> 中文阶段文案（固件页/脚本页共用）
+STAGE_TEXT = {
+    "idle": "就绪", "compiling": "编译中", "connecting": "连接中",
+    "entering_upgrade": "进入升级模式", "reconnecting": "等待设备重连",
+    "transfering": "传输中", "done": "完成", "error": "出错",
+}
+
 _STATE_COLORS = {
     "idle": ICON_IDLE,
     "compiling": WARNING, "connecting": WARNING, "entering_upgrade": WARNING,
