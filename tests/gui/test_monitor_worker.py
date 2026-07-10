@@ -30,7 +30,6 @@ def test_send_frame_writes_to_transport(qtbot):
     w = MonitorWorker(transport=transport)
     w.send_frame(bytes([0x5A, 0x97, 0x98]))
     # 对端 dev 应收到这些字节
-    import queue
     got = [dev.read(1)[0] for _ in range(3)]
     assert got == [0x5A, 0x97, 0x98]
 

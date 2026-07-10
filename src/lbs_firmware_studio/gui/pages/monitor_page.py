@@ -21,7 +21,6 @@ class MonitorPage(QWidget):
         self._profile = None
         self._cards: dict[int, SensorCard] = {}
         self._latest: dict | None = None
-        self._port_getter = lambda: None
         self._monitoring = False
 
         self._worker = MonitorWorker()
@@ -96,9 +95,6 @@ class MonitorPage(QWidget):
             self._grid.addWidget(card, rowpos, col)
         self._status.set_fields(prof["status_fields"])
         self._update_btn.setVisible(prof["sensor_update"])
-
-    def set_port_getter(self, fn) -> None:
-        self._port_getter = fn
 
     # --- 启停 ---
     def _toggle_monitor(self) -> None:

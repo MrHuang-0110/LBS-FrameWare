@@ -97,7 +97,6 @@ class MainWindow(QWidget):
         if key == "monitor":
             self._monitor = MonitorPage()
             self._monitor.set_profile(self._profile)
-            self._monitor.set_port_getter(self._port.selected_port)
             return self._monitor
         if key == "settings":
             return SettingsPage(self._raw, self._path)
