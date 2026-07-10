@@ -5,6 +5,8 @@ from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QComboBox, QProgressBar, QMessageBox, QMenu)
 from PySide6.QtCore import Signal
+import qtawesome as qta
+from .. import theme
 from ..widgets.code_editor import CodeEditor
 from ..widgets.log_view import LogView
 
@@ -24,6 +26,7 @@ class ScriptEditorPage(QWidget):
         self._profile = None
         self._slot = 0
         self._dirty = False
+        self._port_getter = lambda: None
 
         # 顶部：模板下拉 + 保存
         self._tpl_combo = QComboBox()
@@ -34,9 +37,26 @@ class ScriptEditorPage(QWidget):
         top.addWidget(QLabel("模板:")); top.addWidget(self._tpl_combo, 1)
         top.addWidget(self._save_btn)
 
-        # 编辑器 + 右上角浮动按钮（在 Task 6 加按钮，本任务先放编辑器）
+        # 编辑器 + 右上角浮动按钮
         self._editor = CodeEditor()
         self._editor.textChanged.connect(self._on_text_changed)
+
+        self._slot_btn = QPushButton("槽位 0", self._editor)
+        self._slot_btn.setObjectName("floatbtn")
+        self._slot_btn.clicked.connect(self._open_slot_menu)
+        self._deploy_btn = QPushButton(self._editor)
+        self._deploy_btn.setObjectName("floatbtn")
+        self._deploy_btn.setIcon(qta.icon("fa5s.upload", color=theme.TEXT_ON_ACCENT))
+        self._deploy_btn.setToolTip("下发到设备")
+        self._deploy_btn.clicked.connect(self._on_deploy)
+        for b in (self._slot_btn, self._deploy_btn):
+            b.setFixedHeight(32)
+            b.setStyleSheet(
+                f"QPushButton#floatbtn {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
+                f" border: 1px solid {theme.BORDER}; border-radius: 16px; padding: 4px 12px; }}"
+                f"QPushButton#floatbtn:hover {{ background: {theme.BG_HOVER}; }}"
+                f"QPushButton#floatbtn:pressed {{ background: {theme.BG_SELECTED}; }}")
+        self._editor.installEventFilter(self)
 
         # 底部：进度 + 日志
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
@@ -55,6 +75,7 @@ class ScriptEditorPage(QWidget):
         self._profile = profile
         self._slot = 0
         self._reload_templates()
+        self._set_slot(0)
 
     def _reload_templates(self):
         self._tpl_combo.blockSignals(True)
@@ -100,9 +121,53 @@ class ScriptEditorPage(QWidget):
     # --- 槽位 ---
     def _set_slot(self, slot: int) -> None:
         self._slot = slot
+        self._slot_btn.setText(f"槽位 {slot}")
 
     def current_slot(self) -> int:
         return self._slot
+
+    def slot_menu_values(self) -> list[int]:
+        max_slot = getattr(self._profile, "max_slot", 0) if self._profile else 0
+        return list(range(0, max_slot + 1))
+
+    def _open_slot_menu(self):
+        menu = QMenu(self)
+        for s in self.slot_menu_values():
+            act = menu.addAction(str(s))
+            act.triggered.connect(lambda _=False, v=s: self._set_slot(v))
+        menu.exec(self._slot_btn.mapToGlobal(self._slot_btn.rect().bottomLeft()))
+
+    # --- 浮动按钮定位 ---
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is self._editor and event.type() == QEvent.Resize:
+            self._reposition_float_buttons()
+        return super().eventFilter(obj, event)
+
+    def _reposition_float_buttons(self):
+        margin = 8
+        w = self._editor.width()
+        self._deploy_btn.adjustSize()
+        self._slot_btn.adjustSize()
+        dx = w - margin - self._deploy_btn.width()
+        self._deploy_btn.move(dx, margin)
+        self._slot_btn.move(dx - self._slot_btn.width() - 8, margin)
+
+    # --- 下发 ---
+    def set_port_getter(self, fn) -> None:
+        self._port_getter = fn
+
+    def _on_deploy(self):
+        if self._profile is None:
+            return
+        if not self._port_getter():
+            QMessageBox.warning(self, "提示", "未选择串口"); return
+        if not self._editor.text().strip():
+            QMessageBox.warning(self, "提示", "脚本内容为空"); return
+        if self._dirty:
+            QMessageBox.warning(self, "提示", "有未保存的改动，请先保存"); return
+        path = Path(self._write_dir()) / f"{self._slot}.py"
+        self.deploy_requested.emit(path, self._slot)
 
     # --- 保存 ---
     def _write_dir(self) -> Path:
