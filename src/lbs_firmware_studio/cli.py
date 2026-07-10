@@ -5,11 +5,12 @@ from pathlib import Path
 from .backend.profile import load_profiles
 from .backend.deployer import DeviceDeployer
 from .backend.serial_transport import SerialTransport
+from .paths import base_dir
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lbs-firmware")
-    parser.add_argument("--config", default="products.yaml")
+    parser.add_argument("--config", default=None)
     parser.add_argument("--list", action="store_true", help="列出已配置产品")
     parser.add_argument("--product", help="产品名")
     parser.add_argument("--port", help="串口号")
@@ -18,7 +19,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--slot", type=int, default=0, help="目标槽位（默认 0；NEW-AI 0-19，其余 0-9）")
     args = parser.parse_args(argv)
 
-    profiles = load_profiles(Path(args.config))
+    config = Path(args.config) if args.config else base_dir() / "products.yaml"
+    profiles = load_profiles(config)
 
     if args.list:
         for name, p in profiles.items():
