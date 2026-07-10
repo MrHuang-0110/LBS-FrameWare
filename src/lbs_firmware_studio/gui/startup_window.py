@@ -32,10 +32,12 @@ class _Card(QFrame):
             f" border-radius: 10px; }}")
 
     def mousePressEvent(self, e):
-        self.clicked.emit(self._name); super().mousePressEvent(e)
+        # super() 先跑：信号处理器可能销毁本卡片（切换产品会 close 启动窗），
+        # 之后再碰 self 的 C++ 对象会抛 "already deleted"。
+        super().mousePressEvent(e); self.clicked.emit(self._name)
 
     def mouseDoubleClickEvent(self, e):
-        self.double_clicked.emit(self._name); super().mouseDoubleClickEvent(e)
+        super().mouseDoubleClickEvent(e); self.double_clicked.emit(self._name)
 
 
 class StartupWindow(QWidget):
