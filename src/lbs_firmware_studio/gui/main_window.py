@@ -13,6 +13,7 @@ from .pages.firmware_page import FirmwarePage
 from .pages.script_editor_page import ScriptEditorPage
 from .pages.settings_page import SettingsPage
 from .pages.placeholder_page import PlaceholderPage
+from .pages.monitor_page import MonitorPage
 from .worker import DeployWorker
 from ..backend.serial_transport import SerialTransport
 from ..backend.deployer import DeviceDeployer
@@ -21,7 +22,7 @@ from ..backend.deployer import DeviceDeployer
 _NAV = [
     ("firmware", "固件更新", "fa5s.download", True),
     ("editor", "代码编辑", "fa5s.code", True),
-    ("monitor", "数据监控", "fa5s.chart-line", False),
+    ("monitor", "数据监控", "fa5s.chart-line", True),
     ("settings", "设置", "fa5s.cog", True),
 ]
 _KEY2LABEL = {k: lbl for k, lbl, _, _ in _NAV}
@@ -93,11 +94,19 @@ class MainWindow(QWidget):
             self._firmware = FirmwarePage(); return self._firmware
         if key == "editor":
             self._editor_page = ScriptEditorPage(); return self._editor_page
+        if key == "monitor":
+            self._monitor = MonitorPage()
+            self._monitor.set_profile(self._profile)
+            self._monitor.set_port_getter(self._port.selected_port)
+            return self._monitor
         if key == "settings":
             return SettingsPage(self._raw, self._path)
         return PlaceholderPage(_KEY2LABEL[key])
 
     def _on_nav(self, key: str):
+        # 离开监控页时停监控，释放串口
+        if key != "monitor" and self._pages.get("monitor") is self._stack.currentWidget():
+            self._monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
 
     # ---- 固件更新流程（沿用已修复版本）----
