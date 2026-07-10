@@ -20,9 +20,10 @@ def test_shows_product_name(qtbot, tmp_path):
 def test_nav_items_present_and_locked(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     labels = w.nav_labels()
-    assert "固件更新" in labels and "脚本下发" in labels and "设置" in labels
+    assert "固件更新" in labels and "代码编辑" in labels and "设置" in labels
+    assert "脚本下发" not in labels          # scripts 项已隐藏（合并进代码编辑页）
     assert w.is_nav_enabled("固件更新") is True
-    assert w.is_nav_enabled("脚本下发") is False
+    assert w.is_nav_enabled("代码编辑") is True   # editor 现已启用
 
 
 def test_nav_switches_page(qtbot, tmp_path):
@@ -61,3 +62,28 @@ def test_start_firmware_reentrancy_guard(qtbot, tmp_path):
     assert w.is_busy() is True
     w._start_firmware()          # busy -> guard returns, no second thread
     assert w._thread is None     # never created a thread while busy
+
+
+def test_navigate_to_editor_page(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w.navigate("代码编辑")
+    assert w.current_page_name() == "代码编辑"
+
+
+def test_start_script_no_port_returns_early(qtbot, tmp_path, monkeypatch):
+    from pathlib import Path as _P
+    from PySide6.QtWidgets import QMessageBox
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(w._port, "selected_port", lambda: None)
+    w._start_script(_P("x/0.py"), 0)   # 无串口 -> 提前返回，不进入 busy
+    assert w.is_busy() is False
+    assert w._thread is None
+
+
+def test_start_script_reentrancy_guard(qtbot, tmp_path):
+    from pathlib import Path as _P
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._on_state("transfering")   # 模拟忙
+    w._start_script(_P("x/0.py"), 0)
+    assert w._thread is None      # 忙时不建第二个线程

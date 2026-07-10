@@ -10,6 +10,7 @@ from .widgets.activity_bar import ActivityBar
 from .widgets.status_bar import StatusBar
 from .widgets.port_selector import PortSelector
 from .pages.firmware_page import FirmwarePage
+from .pages.script_editor_page import ScriptEditorPage
 from .pages.settings_page import SettingsPage
 from .pages.placeholder_page import PlaceholderPage
 from .worker import DeployWorker
@@ -19,8 +20,7 @@ from ..backend.deployer import DeviceDeployer
 # (key, 中文标签, icon, enabled)
 _NAV = [
     ("firmware", "固件更新", "fa5s.download", True),
-    ("scripts", "脚本下发", "fa5s.upload", False),
-    ("editor", "代码编辑", "fa5s.code", False),
+    ("editor", "代码编辑", "fa5s.code", True),
     ("monitor", "数据监控", "fa5s.chart-line", False),
     ("settings", "设置", "fa5s.cog", True),
 ]
@@ -80,11 +80,17 @@ class MainWindow(QWidget):
         # 固件页接线
         self._firmware.set_profile(profile)
         self._firmware.start_requested.connect(self._start_firmware)
+        # 脚本编辑/下发页接线
+        self._editor_page.set_profile(profile)
+        self._editor_page.set_port_getter(self._port.selected_port)
+        self._editor_page.deploy_requested.connect(self._start_script)
         self._activity.set_current("firmware")
 
     def _make_page(self, key):
         if key == "firmware":
             self._firmware = FirmwarePage(); return self._firmware
+        if key == "editor":
+            self._editor_page = ScriptEditorPage(); return self._editor_page
         if key == "settings":
             return SettingsPage(self._raw, self._path)
         return PlaceholderPage(_KEY2LABEL[key])
@@ -118,11 +124,38 @@ class MainWindow(QWidget):
         self._status.set_connection(port, self._profile.baud)
         self._thread.start()
 
+    def _start_script(self, py_path: Path, slot: int):
+        if self._busy or (self._thread is not None and self._thread.isRunning()):
+            return
+        port = self._port.selected_port()
+        if not port:
+            QMessageBox.warning(self, "提示", "未选择串口"); return
+        self._busy = True
+        self._editor_page.set_busy(True)
+        self._transport = SerialTransport()
+        self._deployer = DeviceDeployer(self._transport)
+        self._deployer.progress.connect(self._editor_page.on_progress)
+        self._deployer.state_changed.connect(self._on_state)
+        self._deployer.log.connect(self._editor_page.on_log)
+        self._deployer.error.connect(self._on_error)
+        self._thread = QThread()
+        self._worker = DeployWorker(self._transport, self._deployer)
+        self._worker.set_job(self._profile, port, py_path=py_path, slot=slot)
+        self._worker.moveToThread(self._thread)
+        # 直连子线程槽，勿 lambda——否则工作会跑在主线程卡死 GUI
+        self._thread.started.connect(self._worker.run_script)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.finished.connect(self._on_finished)
+        self._status.set_connection(port, self._profile.baud)
+        self._thread.start()
+
     def _on_state(self, state: str):
         self._firmware.on_state(state)
+        self._editor_page.on_state(state)
         self._status.set_state(state)
         self._busy = state in _BUSY_STATES
         self._firmware.set_busy(self._busy)
+        self._editor_page.set_busy(self._busy)
         self._port.setEnabled(not self._busy)
         self._switch_btn.setEnabled(not self._busy)
         self._activity.set_locked(self._busy)
@@ -133,6 +166,7 @@ class MainWindow(QWidget):
     def _on_finished(self):
         self._busy = False
         self._firmware.set_busy(False)
+        self._editor_page.set_busy(False)
         self._port.setEnabled(True)
         self._switch_btn.setEnabled(True)
         self._activity.set_locked(False)
