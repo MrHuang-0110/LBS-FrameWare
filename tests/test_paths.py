@@ -18,7 +18,7 @@ def test_frozen_mode_returns_exe_dir(monkeypatch, tmp_path):
 
 
 def test_dev_mode_fallback_to_cwd_when_root_missing(monkeypatch, tmp_path):
-    # 模拟项目根探测失败：把 _project_root 指向一个无 products.yaml 的目录
+    # 模拟项目根探测失败：把 _dev_root 指向一个无 products.yaml 的目录
     import lbs_firmware_studio.paths as paths_mod
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(paths_mod, "_dev_root", lambda: tmp_path)  # tmp_path 无 products.yaml

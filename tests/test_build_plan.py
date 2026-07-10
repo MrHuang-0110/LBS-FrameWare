@@ -1,5 +1,5 @@
 from pathlib import Path
-import sys, importlib.util
+import importlib.util
 
 
 def _load_build():
