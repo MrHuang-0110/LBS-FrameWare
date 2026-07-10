@@ -111,3 +111,24 @@ def test_deploy_emits_when_valid(qtbot, tmp_path, monkeypatch):
     page._on_deploy()
     write_dir = next(iter(prof.script_dirs))
     assert fired == [(write_dir / "2.py", 2)]
+
+
+def test_progress_and_state_and_log(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_progress(50, 100)
+    assert page.progress_value() == 50
+    page.on_state("transfering")
+    assert "传输" in page.stage_text()
+    page.on_log("compile 0.py -> 0.o")
+    assert "0.o" in page.log_text()
+
+
+def test_set_busy_disables_controls(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.set_busy(True)
+    assert page._deploy_btn.isEnabled() is False
+    assert page._save_btn.isEnabled() is False
+    page.set_busy(False)
+    assert page._deploy_btn.isEnabled() is True

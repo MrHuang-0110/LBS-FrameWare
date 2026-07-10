@@ -188,6 +188,30 @@ class ScriptEditorPage(QWidget):
             QMessageBox.critical(self, "错误", f"保存失败: {e}")
             return False
 
+    # --- 进度/状态/日志回调（与固件页同构）---
+    def on_progress(self, done: int, total: int) -> None:
+        pct = int(done * 100 / total) if total else 0
+        self._bar.setValue(pct)
+
+    def on_state(self, state: str) -> None:
+        self._stage.setText(_STAGE_TEXT.get(state, state))
+
+    def on_log(self, msg: str) -> None:
+        level = "error" if ("失败" in msg or "错误" in msg) else "info"
+        self._log.append(msg, level=level)
+
+    def set_busy(self, busy: bool) -> None:
+        self._deploy_btn.setEnabled(not busy)
+        self._save_btn.setEnabled(not busy)
+        self._slot_btn.setEnabled(not busy)
+        self._tpl_combo.setEnabled(not busy)
+
+    def progress_value(self) -> int:
+        return self._bar.value()
+
+    def stage_text(self) -> str:
+        return self._stage.text()
+
     # --- 测试访问器 ---
     def template_names(self) -> list[str]:
         return [self._tpl_combo.itemText(i) for i in range(self._tpl_combo.count())]
