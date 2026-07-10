@@ -6,7 +6,9 @@ Python 语法高亮由本模块的 PythonHighlighter 提供（Task 3 接入）�
 from __future__ import annotations
 from PySide6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
 from PySide6.QtCore import Qt, QRect, QSize
-from PySide6.QtGui import QColor, QPainter, QTextFormat
+from PySide6.QtGui import QColor, QPainter, QTextFormat, QSyntaxHighlighter, QTextCharFormat, QFont
+import re
+import keyword
 from .. import theme
 
 _INDENT = "    "  # 4 空格
@@ -32,6 +34,7 @@ class CodeEditor(QPlainTextEdit):
         self.updateRequest.connect(self._update_lna)
         self.cursorPositionChanged.connect(self._highlight_current_line)
         self._update_lna_width(0)
+        self._highlighter = PythonHighlighter(self.document())
         self._highlight_current_line()
 
     # --- 行号 ---
@@ -96,3 +99,40 @@ class CodeEditor(QPlainTextEdit):
 
     def text(self) -> str:
         return self.toPlainText()
+
+
+def _fmt(color: str, *, bold: bool = False, italic: bool = False) -> QTextCharFormat:
+    f = QTextCharFormat()
+    f.setForeground(QColor(color))
+    if bold:
+        f.setFontWeight(QFont.Bold)
+    if italic:
+        f.setFontItalic(True)
+    return f
+
+
+class PythonHighlighter(QSyntaxHighlighter):
+    """Python 语法高亮：关键字/字符串/注释/数字/装饰器，配色取 theme.*。"""
+
+    def __init__(self, document):
+        super().__init__(document)
+        kw = _fmt(theme.ACCENT, bold=True)
+        self._rules = []
+        for word in keyword.kwlist:
+            self._rules.append((re.compile(rf"\b{word}\b"), kw))
+        self._rules.append((re.compile(r"@\w+"), _fmt(theme.WARNING)))          # 装饰器
+        self._rules.append((re.compile(r"\b[0-9]+\.?[0-9]*\b"), _fmt(theme.WARNING)))  # 数字
+        self._str_fmt = _fmt(theme.SUCCESS)
+        self._comment_fmt = _fmt(theme.TEXT_DISABLED, italic=True)
+
+    def highlightBlock(self, text: str) -> None:
+        for pattern, fmt in self._rules:
+            for m in pattern.finditer(text):
+                self.setFormat(m.start(), m.end() - m.start(), fmt)
+        # 字符串（单/双引号，简单单行匹配）
+        for m in re.finditer(r"('[^']*'|\"[^\"]*\")", text):
+            self.setFormat(m.start(), m.end() - m.start(), self._str_fmt)
+        # 注释（# 到行尾），放最后覆盖前面的匹配
+        hash_idx = text.find("#")
+        if hash_idx >= 0:
+            self.setFormat(hash_idx, len(text) - hash_idx, self._comment_fmt)
