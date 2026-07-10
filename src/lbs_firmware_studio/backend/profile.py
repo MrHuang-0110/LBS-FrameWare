@@ -51,11 +51,12 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
     compiler = _resolve(base, raw.get("compiler_path", "./tools/rust-msc-latest-win10.exe"))
     out: dict[str, DeviceProfile] = {}
     for name, cfg in raw.get("products", {}).items():
+        firmware_dir = cfg.get("firmware_dir", ".")
         # templates_dir 优先取显式 yaml 键，缺省时回退至 firmware_dir 的父目录/templates（保持向后兼容）
         if "templates_dir" in cfg:
             templates_dir = _resolve(base, cfg["templates_dir"])
         else:
-            templates_dir = _resolve(base, Path(cfg.get("firmware_dir", ".")).parent / "templates")
+            templates_dir = _resolve(base, Path(firmware_dir).parent / "templates")
         out[name] = DeviceProfile(
             name=name,
             protocol=cfg["protocol"],
@@ -69,7 +70,7 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             filename_encoding=cfg.get("filename_encoding", "gbk"),
             compiler_path=compiler,
             script_dirs={_resolve(base, k): _resolve(base, v) for k, v in cfg.get("script_dirs", {}).items()},
-            firmware_dir=_resolve(base, cfg.get("firmware_dir", ".")),
+            firmware_dir=_resolve(base, firmware_dir),
             reopen_retries=cfg.get("reopen_retries", 5),
             reopen_delay=cfg.get("reopen_delay", 2.0),
             post_reopen_delay=cfg.get("post_reopen_delay", 5.0),
