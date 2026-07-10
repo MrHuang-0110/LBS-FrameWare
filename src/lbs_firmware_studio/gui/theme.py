@@ -23,6 +23,11 @@ ERROR = "#F14C4C"
 BORDER = "#3E3E42"
 ICON_IDLE = "#858585"
 ICON_DISABLED = "#4A4A4A"
+PRODUCT_GREEN = "#4EC9B0"   # 产品名绿色（同 SUCCESS，语义化别名）
+
+# UI 字体：Inter（开源版 SF，接近 App Store 观感），回退到系统无衬线
+UI_FONT = "'Inter', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif"
+MONO_FONT = "'Cascadia Code', 'Consolas', monospace"
 
 _STATE_COLORS = {
     "idle": ICON_IDLE,
@@ -40,28 +45,34 @@ def state_color(state: str) -> str:
 def app_qss() -> str:
     return f"""
     QWidget {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};
-        font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif; font-size: 13px; }}
-    QFrame#card {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: 2px; }}
+        font-family: {UI_FONT}; font-size: 13px; }}
+    QFrame#card {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: 10px; }}
     QLabel {{ background: transparent; }}
+    QGroupBox {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: 8px;
+        margin-top: 14px; padding: 12px; }}
+    QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left;
+        left: 12px; padding: 0 4px; color: {TEXT_SECONDARY}; }}
     QPushButton#primary {{ background: {ACCENT}; color: {TEXT_ON_ACCENT}; border: none;
-        border-radius: 2px; padding: 6px 14px; }}
+        border-radius: 6px; padding: 6px 14px; }}
     QPushButton#primary:hover {{ background: {ACCENT_HOVER}; }}
+    QPushButton#primary:pressed {{ background: {BG_SELECTED}; }}
     QPushButton#primary:disabled {{ background: {BG_INPUT}; color: {TEXT_DISABLED}; }}
-    QPushButton {{ background: transparent; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 2px; padding: 5px 12px; }}
+    QPushButton {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 5px 12px; }}
     QPushButton:hover {{ background: {BG_HOVER}; }}
+    QPushButton:pressed {{ background: {BG_SELECTED}; }}
     QPushButton:disabled {{ color: {TEXT_DISABLED}; border-color: {BG_INPUT}; }}
     QComboBox {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 2px; padding: 4px 8px; }}
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
     QComboBox QAbstractItemView {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
         selection-background-color: {BG_SELECTED}; }}
     QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 2px; padding: 4px 8px; }}
+        border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
     QPlainTextEdit, QTextEdit {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 2px;
-        font-family: 'Cascadia Code', 'Consolas', monospace; }}
-    QProgressBar {{ border: none; border-radius: 2px; background: {BG_INPUT};
+        border: 1px solid {BORDER}; border-radius: 6px;
+        font-family: {MONO_FONT}; }}
+    QProgressBar {{ border: none; border-radius: 3px; background: {BG_INPUT};
         height: 6px; text-align: center; color: {TEXT_PRIMARY}; }}
-    QProgressBar::chunk {{ background: {ACCENT}; border-radius: 2px; }}
+    QProgressBar::chunk {{ background: {ACCENT}; border-radius: 3px; }}
     QToolTip {{ background: {BG_SIDEBAR}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER}; }}
     """

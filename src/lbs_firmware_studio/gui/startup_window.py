@@ -4,8 +4,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Signal, Qt
 from . import theme
 
-_PROTO_LABEL = {"custom_frame": "自定义帧", "ymodem": "YMODEM"}
-
 
 class _Card(QFrame):
     clicked = Signal(str)
@@ -15,16 +13,12 @@ class _Card(QFrame):
         super().__init__(parent)
         self.setObjectName("card")
         self._name = name
-        self.setFixedSize(180, 200)
+        self.setFixedSize(180, 140)
         self._selected = False
         lay = QVBoxLayout(self)
         title = QLabel(name); title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(f"font-size:16px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
-        ports = QLabel(f"{prof.display_ports} 端口"); ports.setAlignment(Qt.AlignCenter)
-        ports.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
-        proto = QLabel(_PROTO_LABEL.get(prof.protocol, prof.protocol)); proto.setAlignment(Qt.AlignCenter)
-        proto.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
-        lay.addStretch(); lay.addWidget(title); lay.addWidget(ports); lay.addWidget(proto); lay.addStretch()
+        title.setStyleSheet(f"font-size:18px; font-weight:600; color:{theme.PRODUCT_GREEN}; background:transparent;")
+        lay.addStretch(); lay.addWidget(title); lay.addStretch()
         self._apply()
 
     def set_selected(self, sel: bool) -> None:
@@ -35,7 +29,7 @@ class _Card(QFrame):
         width = 2 if self._selected else 1
         self.setStyleSheet(
             f"QFrame#card {{ background: {theme.BG_SIDEBAR}; border: {width}px solid {border};"
-            f" border-radius: 2px; }}")
+            f" border-radius: 10px; }}")
 
     def mousePressEvent(self, e):
         self.clicked.emit(self._name); super().mousePressEvent(e)

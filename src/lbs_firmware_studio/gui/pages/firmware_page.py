@@ -1,7 +1,7 @@
-"""固件更新页：固件源 + 待发送文件夹 + 开始按钮 + 阶段进度 + 日志。"""
+"""固件更新页：固件源 + 待发送文件夹 + 开始按钮 + 阶段进度 + 日志。分组框布局。"""
 from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QProgressBar, QLineEdit)
+                               QPushButton, QProgressBar, QLineEdit, QGroupBox)
 from PySide6.QtCore import Signal
 from ..widgets.log_view import LogView
 
@@ -27,15 +27,28 @@ class FirmwarePage(QWidget):
         self._log = LogView()
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("固件更新"))
-        row = QHBoxLayout(); row.addWidget(QLabel("固件源:")); row.addWidget(self._dir_edit, 1)
-        lay.addLayout(row)
-        lay.addWidget(self._summary)
-        lay.addWidget(self._start)
-        lay.addWidget(self._stage)
-        lay.addWidget(self._bar)
-        lay.addWidget(QLabel("日志"))
-        lay.addWidget(self._log, 1)
+
+        # 组1：固件源
+        src_group = QGroupBox("固件源")
+        src_lay = QVBoxLayout(src_group)
+        row = QHBoxLayout(); row.addWidget(QLabel("目录:")); row.addWidget(self._dir_edit, 1)
+        src_lay.addLayout(row)
+        src_lay.addWidget(self._summary)
+        lay.addWidget(src_group)
+
+        # 组2：操作与进度
+        op_group = QGroupBox("操作")
+        op_lay = QVBoxLayout(op_group)
+        op_lay.addWidget(self._start)
+        op_lay.addWidget(self._stage)
+        op_lay.addWidget(self._bar)
+        lay.addWidget(op_group)
+
+        # 组3：日志
+        log_group = QGroupBox("日志")
+        log_lay = QVBoxLayout(log_group)
+        log_lay.addWidget(self._log)
+        lay.addWidget(log_group, 1)
 
     def set_profile(self, profile) -> None:
         self._profile = profile
