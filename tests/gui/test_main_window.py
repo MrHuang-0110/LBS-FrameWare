@@ -87,3 +87,11 @@ def test_start_script_reentrancy_guard(qtbot, tmp_path):
     w._on_state("transfering")   # 模拟忙
     w._start_script(_P("x/0.py"), 0)
     assert w._thread is None      # 忙时不建第二个线程
+
+
+def test_main_window_initial_size(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    # resize 在无 show 时 size() 可能未生效，断言 minimumSize（最稳）
+    assert w.minimumWidth() >= 900
+    assert w.minimumHeight() >= 600
+    assert (w.minimumWidth(), w.minimumHeight()) == (900, 600)

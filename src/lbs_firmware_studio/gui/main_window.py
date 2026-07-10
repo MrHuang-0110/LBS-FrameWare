@@ -41,6 +41,8 @@ class MainWindow(QWidget):
         self._thread = None
         self._worker = None
         self.setWindowTitle(f"LBS Firmware Studio - {profile.name}")
+        self.resize(1200, 800)
+        self.setMinimumSize(900, 600)
 
         # 顶栏
         self._product_lbl = QLabel(f"◆ {profile.name}")
