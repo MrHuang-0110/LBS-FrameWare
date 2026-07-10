@@ -144,3 +144,52 @@ def test_worker_runs_script_and_emits_finished(qtbot, monkeypatch):
             assert sim.received_files.get("0.o") == b"script bytecode"
     finally:
         t.stop_rx(); sim.stop()
+
+
+def test_run_script_reports_open_failure(qtbot):
+    # transport.open() 在 deploy_script 之前抛出（端口占用/拔线），
+    # run_script 应补发 deployer.error，并且 finished 仍必发。
+    class FailingTransport:
+        def open(self, port, baud):
+            raise OSError("port busy")
+        def start_rx(self):
+            pass
+        def close(self):
+            pass
+    t = FailingTransport()
+    with tempfile.TemporaryDirectory() as d:
+        py = pathlib.Path(d) / "0.py"; py.write_text("x = 1\n")
+        dep = DeviceDeployer(t)
+        worker = DeployWorker(t, dep)
+        errors = []
+        dep.error.connect(lambda e: errors.append(e))
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.set_job(_profile(d), "COM_FAKE", py_path=py, slot=0)
+            worker.run_script()
+        assert errors  # open() 失败已上报
+        assert any("port busy" in e for e in errors)
+
+
+def test_run_script_no_double_error_on_deploy_failure(qtbot):
+    # open 成功但 deploy_script 内部失败（编译抛异常）：deploy_script 已 emit 过一次
+    # error 并 raise，run_script 因 opened=True 不再补发 -> error 恰好 1 条，且无误导前缀。
+    host_ser, dev_ser = make_fake_serial_pair()
+    t = SerialTransport(host_ser); t.start_rx()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            py = pathlib.Path(d) / "0.py"; py.write_text("x = 1\n")
+            dep = DeviceDeployer(t)
+            def failing_compile(profile, py_path, slot):
+                raise RuntimeError("compile boom")
+            dep._compile_to_slot = failing_compile
+            worker = DeployWorker(t, dep)
+            errors = []
+            dep.error.connect(lambda e: errors.append(e))
+            with qtbot.waitSignal(worker.finished, timeout=5000):
+                worker.set_job(_profile(d), "COM_FAKE", py_path=py, slot=0)
+                worker.run_script()
+            assert len(errors) == 1  # 只上报 1 条，无重复
+            assert not any("打开串口失败" in e for e in errors)  # 无误导前缀
+            assert "compile boom" in errors[0]
+    finally:
+        t.stop_rx()
