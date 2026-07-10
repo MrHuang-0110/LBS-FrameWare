@@ -6,6 +6,7 @@ products:
     baud: 115200
     folders: [app, music, boot, config, version]
     firmware_dir: ./products/NEW-AI/fwlib
+    max_slot: 19
     script_dirs: { ./products/NEW-AI/write: ./products/NEW-AI/app }
     chunk_size: 248
     last_frame_ack: wait_2s
@@ -21,6 +22,7 @@ products:
     baud: 115200
     folders: [app, version]
     firmware_dir: ./products/SPARK-AI/fwlib
+    max_slot: 9
     script_dirs: { ./products/SPARK-AI/write: ./products/SPARK-AI/app }
     chunk_size: 248
     last_frame_ack: wait_2s
@@ -36,6 +38,7 @@ products:
     baud: 115200
     folders: [__single__]
     firmware_dir: ./products/NEXT-AI/fwlib
+    max_slot: 0
     script_dirs: { ./products/NEXT-AI/write: ./products/NEXT-AI/app }
     chunk_size: 1024
     last_frame_ack: skip

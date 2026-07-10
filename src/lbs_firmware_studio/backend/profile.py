@@ -25,6 +25,8 @@ class DeviceProfile:
     post_reopen_delay: float = 5.0   # 重开串口成功后等待设备 USB CDC/固件初始化（原工具经验值 5s）
     disappear_timeout: float = 5.0   # 等端口从存在->消失的最长时间（复位到端口消失实测~1.4s）
     display_ports: int = 0    # 启动卡片展示的端口数(纯展示，不影响协议)
+    max_slot: int = 0                       # 脚本槽位上限（0..max_slot），按产品配置
+    templates_dir: Path = Path("./templates")  # 预加载模板目录，load 时按产品根推导
 
 
 def _to_bytes(val) -> bytes:
@@ -60,6 +62,8 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             post_reopen_delay=cfg.get("post_reopen_delay", 5.0),
             disappear_timeout=cfg.get("disappear_timeout", 5.0),
             display_ports=cfg.get("display_ports", 0),
+            max_slot=cfg.get("max_slot", 0),
+            templates_dir=Path(cfg.get("firmware_dir", ".")).parent / "templates",
         )
     return out
 
