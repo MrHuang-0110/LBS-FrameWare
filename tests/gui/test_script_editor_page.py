@@ -56,9 +56,6 @@ def test_save_writes_slot_py(qtbot, tmp_path):
     assert page.is_dirty() is False
 
 
-from PySide6.QtCore import Qt
-
-
 def test_slot_menu_range_follows_max_slot(qtbot, tmp_path):
     prof = _profile(tmp_path)   # max_slot=19
     page = ScriptEditorPage(); qtbot.addWidget(page)

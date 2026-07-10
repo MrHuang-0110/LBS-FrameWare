@@ -1,6 +1,6 @@
 from lbs_firmware_studio.gui.widgets.code_editor import CodeEditor
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent, QKeyEvent
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtCore import QEvent
 
 
