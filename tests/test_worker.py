@@ -118,3 +118,29 @@ def test_run_firmware_executes_off_main_thread(qtbot):
         thread.wait(3000)
     assert _Probe.ran_thread is not None
     assert _Probe.ran_thread != main_ident, "run_firmware 跑在主线程 => GUI 会卡死"
+
+
+def test_worker_runs_script_and_emits_finished(qtbot, monkeypatch):
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="custom_frame"); sim.start()
+    t = SerialTransport(host_ser); t.start_rx()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            py = pathlib.Path(d) / "0.py"; py.write_text("x = 1\n")
+            dep = DeviceDeployer(t)
+            # mock 编译：把 <slot>.o 造出来，避免调真编译器
+            def fake_compile(profile, py_path, slot):
+                out = pathlib.Path(d) / f"{slot}.o"
+                out.write_bytes(b"script bytecode")
+                return out
+            dep._compile_to_slot = fake_compile
+            worker = DeployWorker(t, dep)
+            states = []
+            dep.state_changed.connect(lambda s: states.append(s))
+            with qtbot.waitSignal(worker.finished, timeout=5000):
+                worker.set_job(_profile(d), "COM_FAKE", py_path=py, slot=0)
+                worker.run_script()
+            assert "done" in states
+            assert sim.received_files.get("0.o") == b"script bytecode"
+    finally:
+        t.stop_rx(); sim.stop()
