@@ -3,13 +3,8 @@ from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QLineEdit, QGroupBox)
 from PySide6.QtCore import Signal
+from .. import theme
 from ..widgets.log_view import LogView
-
-_STAGE_TEXT = {
-    "idle": "就绪", "compiling": "编译中", "connecting": "连接中",
-    "entering_upgrade": "进入升级模式", "reconnecting": "等待设备重连",
-    "transfering": "传输中", "done": "完成", "error": "出错",
-}
 
 
 class FirmwarePage(QWidget):
@@ -63,7 +58,7 @@ class FirmwarePage(QWidget):
         self._bar.setValue(pct)
 
     def on_state(self, state: str) -> None:
-        self._stage.setText(_STAGE_TEXT.get(state, state))
+        self._stage.setText(theme.STAGE_TEXT.get(state, state))
 
     def on_log(self, msg: str) -> None:
         level = "error" if ("失败" in msg or "错误" in msg) else "info"
