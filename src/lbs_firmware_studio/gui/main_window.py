@@ -100,50 +100,33 @@ class MainWindow(QWidget):
 
     # ---- 固件更新流程（沿用已修复版本）----
     def _start_firmware(self):
-        if self._busy or (self._thread is not None and self._thread.isRunning()):
-            return
-        port = self._port.selected_port()
-        if not port:
-            QMessageBox.warning(self, "提示", "未选择串口"); return
-        self._busy = True
-        self._firmware.set_busy(True)
-        self._transport = SerialTransport()
-        self._deployer = DeviceDeployer(self._transport)
-        self._deployer.progress.connect(self._firmware.on_progress)
-        self._deployer.state_changed.connect(self._on_state)
-        self._deployer.log.connect(self._firmware.on_log)
-        self._deployer.error.connect(self._on_error)
-        self._thread = QThread()
-        self._worker = DeployWorker(self._transport, self._deployer)
-        self._worker.set_job(self._profile, port)
-        self._worker.moveToThread(self._thread)
-        # 直连 worker 的槽(带子线程 affinity)，勿用 lambda——否则工作会跑在主线程卡死 GUI
-        self._thread.started.connect(self._worker.run_firmware)
-        self._worker.finished.connect(self._thread.quit)
-        self._worker.finished.connect(self._on_finished)
-        self._status.set_connection(port, self._profile.baud)
-        self._thread.start()
+        self._run_deploy(self._firmware, "run_firmware")
 
     def _start_script(self, py_path: Path, slot: int):
+        self._run_deploy(self._editor_page, "run_script", py_path=py_path, slot=slot)
+
+    def _run_deploy(self, page, run_slot_name: str, **job_kwargs):
+        """统一的下发接线：守卫→建 transport/deployer→接线→moveToThread→start。
+        page 为当前忙碌页(进度/日志回调目标)，run_slot_name 为 worker 上的直连无参运行槽。"""
         if self._busy or (self._thread is not None and self._thread.isRunning()):
             return
         port = self._port.selected_port()
         if not port:
             QMessageBox.warning(self, "提示", "未选择串口"); return
         self._busy = True
-        self._editor_page.set_busy(True)
+        page.set_busy(True)
         self._transport = SerialTransport()
         self._deployer = DeviceDeployer(self._transport)
-        self._deployer.progress.connect(self._editor_page.on_progress)
+        self._deployer.progress.connect(page.on_progress)
         self._deployer.state_changed.connect(self._on_state)
-        self._deployer.log.connect(self._editor_page.on_log)
+        self._deployer.log.connect(page.on_log)
         self._deployer.error.connect(self._on_error)
         self._thread = QThread()
         self._worker = DeployWorker(self._transport, self._deployer)
-        self._worker.set_job(self._profile, port, py_path=py_path, slot=slot)
+        self._worker.set_job(self._profile, port, **job_kwargs)
         self._worker.moveToThread(self._thread)
-        # 直连子线程槽，勿 lambda——否则工作会跑在主线程卡死 GUI
-        self._thread.started.connect(self._worker.run_script)
+        # 直连 worker 的运行槽(带子线程 affinity)，勿用 lambda——否则工作会跑在主线程卡死 GUI
+        self._thread.started.connect(getattr(self._worker, run_slot_name))
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._on_finished)
         self._status.set_connection(port, self._profile.baud)
