@@ -167,6 +167,8 @@ class ScriptEditorPage(QWidget):
         if self._dirty:
             QMessageBox.warning(self, "提示", "有未保存的改动，请先保存"); return
         path = Path(self._write_dir()) / f"{self._slot}.py"
+        if not path.exists():
+            QMessageBox.warning(self, "提示", "当前槽位尚未保存，请先保存"); return
         self.deploy_requested.emit(path, self._slot)
 
     # --- 保存 ---

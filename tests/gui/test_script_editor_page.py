@@ -99,6 +99,21 @@ def test_deploy_blocked_when_dirty(qtbot, tmp_path, monkeypatch):
     assert fired == []   # 未保存被拦截
 
 
+def test_deploy_blocked_when_slot_not_saved(qtbot, tmp_path, monkeypatch):
+    # 编辑并保存到槽0(clean)后切到槽5(该槽无文件)，下发应被存在性校验拦截。
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.set_port_getter(lambda: "COM3")
+    page._editor.set_text("saved = 0\n"); page.save()   # 保存到槽0 -> clean
+    page._set_slot(5)                                     # 切到槽5(无文件)
+    fired = []
+    page.deploy_requested.connect(lambda p, s: fired.append((p, s)))
+    page._on_deploy()
+    assert fired == []   # 目标文件不存在，被拦截
+
+
 def test_deploy_emits_when_valid(qtbot, tmp_path, monkeypatch):
     prof = _profile(tmp_path)
     page = ScriptEditorPage(); qtbot.addWidget(page)
