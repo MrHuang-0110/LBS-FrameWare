@@ -3,7 +3,8 @@
 from __future__ import annotations
 from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QComboBox, QProgressBar, QMessageBox, QMenu)
+                               QPushButton, QComboBox, QProgressBar, QMessageBox,
+                               QMenu, QFileDialog)
 from PySide6.QtCore import Signal
 import qtawesome as qta
 from .. import theme
@@ -23,13 +24,16 @@ class ScriptEditorPage(QWidget):
         self._dirty = False
         self._port_getter = lambda: None
 
-        # 顶部：模板下拉 + 保存
+        # 顶部：模板下拉 + 打开 + 保存
         self._tpl_combo = QComboBox()
         self._tpl_combo.currentTextChanged.connect(self._on_template_changed)
+        self._open_btn = QPushButton("打开…")
+        self._open_btn.clicked.connect(self._on_open)
         self._save_btn = QPushButton("保存")
         self._save_btn.clicked.connect(self.save)
         top = QHBoxLayout()
         top.addWidget(QLabel("模板:")); top.addWidget(self._tpl_combo, 1)
+        top.addWidget(self._open_btn)
         top.addWidget(self._save_btn)
 
         # 编辑器 + 右上角浮动按钮
@@ -53,17 +57,19 @@ class ScriptEditorPage(QWidget):
                 f"QPushButton#floatbtn:pressed {{ background: {theme.BG_SELECTED}; }}")
         self._editor.installEventFilter(self)
 
-        # 底部：进度 + 日志
+        # 底部：进度 + 日志（日志固定矮条，编辑器占绝大部分空间）
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
         self._stage = QLabel("就绪")
         self._log = LogView()
+        self._log.setMinimumHeight(80)
+        self._log.setMaximumHeight(140)
 
         lay = QVBoxLayout(self)
         lay.addLayout(top)
-        lay.addWidget(self._editor, 1)
+        lay.addWidget(self._editor, 1)   # 唯一可伸缩
         lay.addWidget(self._stage)
         lay.addWidget(self._bar)
-        lay.addWidget(self._log, 1)
+        lay.addWidget(self._log)         # stretch=0，固定矮
 
     # --- profile ---
     def set_profile(self, profile) -> None:
@@ -97,6 +103,33 @@ class ScriptEditorPage(QWidget):
             content = (tdir / name).read_text(encoding="utf-8")
             self._editor.set_text(content)
         self._mark_clean()
+
+    # --- 打开任意 .py ---
+    def _default_open_dir(self) -> str:
+        if self._profile is not None:
+            try:
+                return str(next(iter(self._profile.script_dirs)))
+            except (StopIteration, AttributeError, TypeError):
+                pass
+        return str(Path.home())
+
+    def _on_open(self):
+        fn, _ = QFileDialog.getOpenFileName(
+            self, "打开脚本", self._default_open_dir(), "Python (*.py)")
+        if fn:
+            self.load_file(fn)
+
+    def load_file(self, path: str) -> bool:
+        """读文件 → 灌编辑器 → mark_clean → 日志。纯逻辑，不弹对话框（供测试直接调）。"""
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"打开失败: {e}")
+            return False
+        self._editor.set_text(content)
+        self._mark_clean()
+        self._log.append(f"已打开 {Path(path).name}", level="success")
+        return True
 
     # --- dirty 追踪 ---
     def _on_text_changed(self):
@@ -200,6 +233,7 @@ class ScriptEditorPage(QWidget):
     def set_busy(self, busy: bool) -> None:
         self._deploy_btn.setEnabled(not busy)
         self._save_btn.setEnabled(not busy)
+        self._open_btn.setEnabled(not busy)
         self._slot_btn.setEnabled(not busy)
         self._tpl_combo.setEnabled(not busy)
 

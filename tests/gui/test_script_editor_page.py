@@ -144,3 +144,36 @@ def test_set_busy_disables_controls(qtbot, tmp_path):
     assert page._save_btn.isEnabled() is False
     page.set_busy(False)
     assert page._deploy_btn.isEnabled() is True
+
+
+def test_load_file_loads_content_and_clean(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    src = tmp_path / "any.py"
+    src.write_text("import time\nx = 1\n", encoding="utf-8")
+    assert page.load_file(str(src)) is True
+    assert page.editor_text() == "import time\nx = 1\n"
+    assert page.is_dirty() is False
+    assert "any.py" in page.log_text()
+
+
+def test_open_button_exists(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert hasattr(page, "_open_btn")
+    assert "打开" in page._open_btn.text()
+
+
+def test_log_has_max_height(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert page._log.maximumHeight() <= 140
+
+
+def test_set_busy_disables_open(qtbot, tmp_path):
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.set_busy(True)
+    assert page._open_btn.isEnabled() is False
+    page.set_busy(False)
+    assert page._open_btn.isEnabled() is True

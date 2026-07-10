@@ -12,6 +12,14 @@ def test_line_number_width_grows_with_lines(qtbot):
     assert w2 > w1  # 3 位行号比 1 位宽
 
 
+def test_line_number_area_visible_and_sized(qtbot):
+    ed = CodeEditor(); qtbot.addWidget(ed)
+    ed.set_text("\n".join(f"line {i}" for i in range(5)))
+    ed.show(); qtbot.waitExposed(ed)
+    assert ed.line_number_area_width() > 0
+    assert ed._lna.isVisible()
+
+
 def test_tab_inserts_spaces(qtbot):
     ed = CodeEditor(); qtbot.addWidget(ed)
     ed.set_text("")
