@@ -6,6 +6,7 @@ products:
     baud: 115200
     folders: [app, music, boot, config, version]
     firmware_dir: ./products/NEW-AI/fwlib
+    templates_dir: ./products/NEW-AI/templates   # 独立于 firmware_dir，改固件目录不影响模板查找
     max_slot: 19
     script_dirs: { ./products/NEW-AI/write: ./products/NEW-AI/app }
     chunk_size: 248
@@ -22,6 +23,7 @@ products:
     baud: 115200
     folders: [app, version]
     firmware_dir: ./products/SPARK-AI/fwlib
+    templates_dir: ./products/SPARK-AI/templates
     max_slot: 9
     script_dirs: { ./products/SPARK-AI/write: ./products/SPARK-AI/app }
     chunk_size: 248
@@ -38,6 +40,7 @@ products:
     baud: 115200
     folders: [__single__]
     firmware_dir: ./products/NEXT-AI/fwlib
+    templates_dir: ./products/NEXT-AI/templates
     max_slot: 0
     script_dirs: { ./products/NEXT-AI/write: ./products/NEXT-AI/app }
     chunk_size: 1024
