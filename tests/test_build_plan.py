@@ -54,3 +54,18 @@ def test_plan_targets_under_dst(tmp_path):
     plan = build.plan_resource_copy(src, dst)
     for _, d in plan:
         assert str(d).startswith(str(dst))   # 目标都在 dst 下
+
+
+def test_spec_file_has_key_settings():
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "LBS-Firmware-Studio.spec").read_text(encoding="utf-8")
+    assert "app.py" in spec                    # 入口
+    assert "qtawesome" in spec                 # 字体数据收集
+    assert "COLLECT" in spec                   # onedir（非 onefile）
+    assert "LBS-Firmware-Studio" in spec       # 产物名
+
+
+def test_pyproject_has_build_extra():
+    root = Path(__file__).resolve().parents[1]
+    txt = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "pyinstaller" in txt.lower()
