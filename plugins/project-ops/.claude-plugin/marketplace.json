@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "project-ops-local",
+  "description": "Local marketplace for the project-ops plugin",
+  "owner": {
+    "name": "LBS Dev"
+  },
+  "plugins": [
+    {
+      "name": "project-ops",
+      "description": "Always-on project memory + git workspace management with semantic sync",
+      "author": { "name": "LBS Dev" },
+      "category": "productivity",
+      "source": {
+        "source": "local",
+        "path": "."
+      }
+    }
+  ]
+}
