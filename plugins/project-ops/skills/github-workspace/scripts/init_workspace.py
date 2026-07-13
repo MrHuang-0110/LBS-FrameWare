@@ -25,14 +25,19 @@ def local_branch_exists(name, cwd=None):
 def remote_branch_exists(name, remote="origin", cwd=None):
     if not _remote_exists(remote, cwd=cwd):
         return False
-    proc = run_git(["ls-remote", "--heads", remote, name], cwd=cwd)
-    return proc.returncode == 0 and proc.stdout.strip() != ""
+    return _remote_has_branch(name, remote, cwd=cwd)
 
 
 def _remote_exists(remote, cwd=None):
     proc = run_git(["remote"], cwd=cwd)
     remotes = proc.stdout.split()
     return remote in remotes
+
+
+def _remote_has_branch(name, remote, cwd=None):
+    """ls-remote branch check; assumes <remote> is already known to exist."""
+    proc = run_git(["ls-remote", "--heads", remote, name], cwd=cwd)
+    return proc.returncode == 0 and proc.stdout.strip() != ""
 
 
 def init_workspace(branch="workspace", main="main", remote="origin", cwd=None):
@@ -44,7 +49,7 @@ def init_workspace(branch="workspace", main="main", remote="origin", cwd=None):
     if local_branch_exists(branch, cwd=cwd):
         run_git(["checkout", branch], cwd=cwd)
         action = "reused-local"
-    elif remote_branch_exists(branch, remote, cwd=cwd):
+    elif has_remote and _remote_has_branch(branch, remote, cwd=cwd):
         run_git(["checkout", "-b", branch, remote + "/" + branch], cwd=cwd)
         action = "reused-remote"
     else:
