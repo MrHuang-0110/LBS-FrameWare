@@ -64,5 +64,5 @@ def test_max_slot_and_templates_dir(tmp_path):
     profiles = load_profiles(p)
     assert profiles["NEW-AI"].max_slot == 19
     assert profiles["NEXT-AI"].max_slot == 0   # 未配置默认 0
-    # templates_dir 推导为 firmware_dir 的父目录下的 templates
-    assert profiles["NEW-AI"].templates_dir == Path("./products/NEW-AI") / "templates"
+    # templates_dir 推导为 firmware_dir 的父目录下的 templates（现 resolve 为绝对）
+    assert profiles["NEW-AI"].templates_dir == (p.parent / "products/NEW-AI/templates").resolve()

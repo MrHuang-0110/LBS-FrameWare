@@ -7,3 +7,7 @@ dist/
 compile_log.txt
 products/
 scripts/diag_*.py
+
+# 项目记忆系统（MCP knowledge-graph）——本机专属，不入库
+.mcp.json
+.memory/

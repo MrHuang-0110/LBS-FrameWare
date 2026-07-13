@@ -38,11 +38,25 @@ def _to_bytes(val) -> bytes:
     return b""
 
 
+def _resolve(base: Path, p) -> Path:
+    """相对路径基于 base 解析为绝对；绝对路径原样(经 resolve 规整)。"""
+    p = Path(p)
+    return p.resolve() if p.is_absolute() else (base / p).resolve()
+
+
 def load_profiles(path: Path) -> dict[str, DeviceProfile]:
+    path = Path(path).resolve()
+    base = path.parent
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    compiler = Path(raw.get("compiler_path", "./tools/rust-msc-latest-win10.exe"))
+    compiler = _resolve(base, raw.get("compiler_path", "./tools/rust-msc-latest-win10.exe"))
     out: dict[str, DeviceProfile] = {}
     for name, cfg in raw.get("products", {}).items():
+        firmware_dir = cfg.get("firmware_dir", ".")
+        # templates_dir 优先取显式 yaml 键，缺省时回退至 firmware_dir 的父目录/templates（保持向后兼容）
+        if "templates_dir" in cfg:
+            templates_dir = _resolve(base, cfg["templates_dir"])
+        else:
+            templates_dir = _resolve(base, Path(firmware_dir).parent / "templates")
         out[name] = DeviceProfile(
             name=name,
             protocol=cfg["protocol"],
@@ -55,15 +69,15 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             last_frame_ack=cfg.get("last_frame_ack", "wait_2s"),
             filename_encoding=cfg.get("filename_encoding", "gbk"),
             compiler_path=compiler,
-            script_dirs={Path(k): Path(v) for k, v in cfg.get("script_dirs", {}).items()},
-            firmware_dir=Path(cfg.get("firmware_dir", ".")),
+            script_dirs={_resolve(base, k): _resolve(base, v) for k, v in cfg.get("script_dirs", {}).items()},
+            firmware_dir=_resolve(base, firmware_dir),
             reopen_retries=cfg.get("reopen_retries", 5),
             reopen_delay=cfg.get("reopen_delay", 2.0),
             post_reopen_delay=cfg.get("post_reopen_delay", 5.0),
             disappear_timeout=cfg.get("disappear_timeout", 5.0),
             display_ports=cfg.get("display_ports", 0),
             max_slot=cfg.get("max_slot", 0),
-            templates_dir=Path(cfg.get("firmware_dir", ".")).parent / "templates",
+            templates_dir=templates_dir,
         )
     return out
 

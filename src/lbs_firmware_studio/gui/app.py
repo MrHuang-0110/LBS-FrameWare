@@ -7,6 +7,7 @@ from . import theme
 from .startup_window import StartupWindow
 from .main_window import MainWindow
 from ..backend.profile import load_profiles
+from ..paths import base_dir
 
 
 class AppController:
@@ -46,7 +47,7 @@ class AppController:
 def main(argv=None) -> int:
     app = QApplication.instance() or QApplication(sys.argv if argv is None else argv)
     app.setStyleSheet(theme.app_qss())
-    config_path = Path("products.yaml")
+    config_path = base_dir() / "products.yaml"
     import yaml
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     profiles = load_profiles(config_path)
