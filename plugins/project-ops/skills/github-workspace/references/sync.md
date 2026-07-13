@@ -8,7 +8,7 @@
 `git status --porcelain`。为空 → 无改动,**不做空 commit**,告知用户后结束。
 
 ### 2. 暂存 + 生成摘要
-1. `git add -A`（记忆文件 .memory/ 已被 .gitignore 排除,不会误入；若某项目未排除,按 project-memory 约定不主动提交记忆文件）。
+1. `git add -A`（注意：project-memory 默认将 `.memory/memory.jsonl` 纳入 git 共享——见其 setup.md，届时记忆数据会随本次提交一并进入 workspace,这是**预期行为**;仅当本项目主动在 `.gitignore` 排除 `.memory/` 时,记忆才不进入）。
 2. 跑 `python <本 skill>/scripts/diff_summary.py` 得到一行摘要,如 `3 files, +42/-7 (backend, gui)`。
 
 ### 3. commit

@@ -22,7 +22,7 @@
 
 ### 3b. 无 git → 询问是否推送 GitHub
 问用户：「当前目录不是 git 仓库,要把它推送到 GitHub 吗？」
-- **要** → `git init` → `git checkout -b main` → 首次 add+commit → 引导用户在 GitHub 建远程仓并 `git remote add origin <url>` → 跑 init_workspace.py 建 workspace 分支并推送。（建远程仓可用 GitHub MCP,见 references/pr.md 的 MCP 说明；MCP 不可用则让用户手动建仓贴 URL。）
+- **要** → `git init` → `git checkout -b main` → 首次 add+commit → 引导用户在 GitHub 建远程仓并 `git remote add origin <url>` → **先 `git push -u origin main`（确保远程有 main,否则后续 pr.md 以 main 为 base 开 PR 会失败）** → 再跑 init_workspace.py 建 workspace 分支并推送。（建远程仓可用 GitHub MCP,见 references/pr.md 的 MCP 说明；MCP 不可用则让用户手动建仓贴 URL。）
 - **不要** → 进入**仅记忆模式**：跳过所有 git 步骤,只保留步骤 1 建好的记忆系统。之后每任务完成只写记忆(见 references/sync.md 的仅记忆模式)。
 
 ### 4. 汇报
