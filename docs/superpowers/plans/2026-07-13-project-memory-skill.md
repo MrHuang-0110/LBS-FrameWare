@@ -363,6 +363,7 @@ git commit -m "docs(project-memory): setup reference (precheck/init/migrate)"
 - pitfall — 踩过的坑：报错根因、反直觉行为、陷阱。
 - decision — 重要决策/关键数据：选型拍板、关键参数。
 - progress — 项目进度节点：阶段完成、分支合并、里程碑。
+- operation — 重要操作：git 回退/revert/reset、删除或重命名关键文件、改配置、迁移、危险命令。
 - component — 项目模块/子系统。
 - convention — 项目约定：命名、流程、平台约束。
 
@@ -373,25 +374,36 @@ git commit -m "docs(project-memory): setup reference (precheck/init/migrate)"
 ## Relation（有向）
 - pitfall —occurs_in→ component
 - decision —affects→ component
+- operation —acts_on→ component
 - 迁移生成的历史关联统一用 relates_to。
 
-## 三类写入触发场景
+## 四类写入触发场景
 | 场景 | 信号 | 记成 |
 | 坑 | 报错根因、"原来是因为…"、反直觉行为 | pitfall 实体 + observation |
 | 重要数据/决策 | 选型拍板、关键参数、架构约定 | decision / convention 实体 |
 | 项目进度 | 阶段完成、分支合并、里程碑 | progress 实体，更新既有而非堆叠 |
+| 重要操作 | git 回退/revert/reset、删改关键文件、改配置、迁移、危险命令 | operation 实体 + observation：记改了什么、为什么、影响、如何复原 |
+
+## git 回退专项（必记）
+一旦执行或用户提到 git revert/reset/回退，必须写一条 operation observation，含：
+- 回退了哪些 commit（短 SHA + 主题）
+- 回退原因
+- 丢弃 / 恢复了什么改动
+- 当前 HEAD 位置
 
 ## 命名规范
 - 实体 name 用 kebab-case，全项目唯一。
 - 进度类：优先 add_observations 到既有 progress 实体，不为同一里程碑反复建新实体。
+- 操作类：git 历史操作统一记到 name 为 `git-operations` 的 operation 实体，按日期追加 observation，不逐次建新实体。
 ```
 
-- [ ] **Step 2: 验收检查 — 5 类实体齐全**
+- [ ] **Step 2: 验收检查 — 6 类实体齐全 + git 回退专项**
 
 Run:
 ```bash
-for t in pitfall decision progress component convention; do \
-grep -q "^- $t " ~/.claude/skills/project-memory/references/schema.md || echo "MISSING $t"; done; echo done
+for t in pitfall decision progress operation component convention; do \
+grep -q "^- $t " ~/.claude/skills/project-memory/references/schema.md || echo "MISSING $t"; done; \
+grep -q 'git 回退专项' ~/.claude/skills/project-memory/references/schema.md || echo "MISSING git-revert"; echo done
 ```
 Expected: 仅输出 `done`（无 MISSING）
 
@@ -430,7 +442,8 @@ git commit -m "docs(project-memory): memory schema and write triggers"
 3. 已有实体新增事实 → `add_observations`（带 YYYY-MM-DD 前缀）。
 4. 有跨实体关系 → `create_relations`。
 5. 进度类：更新既有 progress 实体，不堆叠新实体。
-6. 不自动 git commit 记忆文件。
+6. 重要操作（尤其 git 回退/revert/reset）：追加到 `git-operations`（或对应 operation）实体，记改了什么、为什么、影响、如何复原、当前 HEAD。见 schema.md「git 回退专项」。
+7. 不自动 git commit 记忆文件。
 
 ## 整理（用户要求或图谱明显冗余时）
 - `read_graph` 通览 → 找重复/过时实体与 observation。

@@ -85,16 +85,19 @@
 
 ## 数据模型（schema）
 
-- **Entity 类型**：`pitfall`（坑）、`decision`（重要决策/数据）、`progress`（进度节点）、`component`（模块）、`convention`（约定）。
+- **Entity 类型**：`pitfall`（坑）、`decision`（重要决策/数据）、`progress`（进度节点）、`operation`（重要操作，尤其 git 回退/revert/reset）、`component`（模块）、`convention`（约定）。
 - **Observation**：挂实体上的具体事实，带日期前缀，如 `2026-07-13: xxx`。
-- **Relation**：如 `pitfall`—出现于→`component`；`decision`—影响→`component`。
+- **Relation**：如 `pitfall`—出现于→`component`；`decision`—影响→`component`；`operation`—作用于→`component`。
 
-**三类触发写入场景**：
+**四类触发写入场景**：
 | 场景 | 信号 | 记成 |
 |------|------|------|
 | 坑 | 报错根因、"原来是因为…"、反直觉行为 | `pitfall` 实体 + observation |
 | 重要数据/决策 | 选型拍板、关键参数、架构约定 | `decision`/`convention` 实体 |
 | 项目进度 | 阶段完成、分支合并、里程碑 | `progress` 实体，更新而非堆叠 |
+| 重要操作 | git 回退/revert/reset、删除或重命名关键文件、改配置、迁移、危险命令 | `operation` 实体 + observation：记**改了什么、为什么、影响、如何复原** |
+
+**git 回退专项**：一旦执行或用户提到 git revert/reset/回退，必须写一条 `operation` observation，含：回退了哪些 commit（短 SHA + 主题）、回退原因、丢弃/恢复了什么改动、当前 HEAD 位置。目的：撤销动作本身是最容易事后遗忘、最需要留痕的项目事件。
 
 ## 运行时规则（写进 SKILL.md）
 
