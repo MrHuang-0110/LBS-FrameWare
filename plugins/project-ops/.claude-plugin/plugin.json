@@ -1,0 +1,8 @@
+{
+  "name": "project-ops",
+  "version": "0.1.0",
+  "description": "Manual-init project operations: always-on knowledge-graph memory plus git workspace-branch management with semantic memory sync and manual-gated PRs",
+  "author": {
+    "name": "LBS Dev"
+  }
+}
