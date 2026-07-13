@@ -95,3 +95,24 @@ def test_main_window_initial_size(qtbot, tmp_path):
     assert w.minimumWidth() >= 900
     assert w.minimumHeight() >= 600
     assert (w.minimumWidth(), w.minimumHeight()) == (900, 600)
+
+
+def test_monitor_nav_enabled(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    assert "数据监控" in w.nav_labels()
+    assert w.is_nav_enabled("数据监控") is True
+
+
+def test_navigate_to_monitor_page(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w.navigate("数据监控")
+    assert w.current_page_name() == "数据监控"
+
+
+def test_leaving_monitor_stops_it(qtbot, tmp_path):
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w.navigate("数据监控")
+    stopped = []
+    w._monitor.stop_monitor = lambda: stopped.append(True)  # 打桩
+    w.navigate("固件更新")     # 离开监控页
+    assert stopped == [True]
