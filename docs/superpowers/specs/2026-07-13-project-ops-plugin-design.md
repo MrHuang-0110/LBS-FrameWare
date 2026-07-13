@@ -1,7 +1,7 @@
 # Design: `project-ops` plugin
 
 - 日期: 2026-07-13
-- 状态: 已批准,待写实施计划
+- 状态: 已实现(9/9 任务完成,全插件测试通过;见 docs/superpowers/plans/ 下 project-ops 实施计划)
 - 相关: [[project-memory skill]](2026-07-13-project-memory-skill-design.md)
 
 ## 1. 目标与定位
