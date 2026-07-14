@@ -62,3 +62,28 @@ def test_read_byte_timeout_returns_none():
         assert t.read_byte(timeout=0.1) is None
     finally:
         t.close()
+
+
+def test_write_chunks_by_mtu_and_preserves_bytes():
+    from tests.fakes import make_fake_ble_pair
+    # mtu_size=23 -> 有效分片 = 23-3 = 20
+    client, dev = make_fake_ble_pair(mtu_size=23)
+    calls = []
+    orig = client.write_gatt_char
+
+    async def spy(uuid, data, response=False):
+        calls.append(len(data))
+        await orig(uuid, data, response=response)
+
+    client.write_gatt_char = spy
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    try:
+        payload = bytes(range(50))  # 50 字节 -> 20+20+10
+        t.write(payload)
+        import time as _t; _t.sleep(0.1)
+        got = dev.read(50)
+        assert got == payload
+        assert calls == [20, 20, 10]   # 按 MTU-3 分片
+    finally:
+        t.close()

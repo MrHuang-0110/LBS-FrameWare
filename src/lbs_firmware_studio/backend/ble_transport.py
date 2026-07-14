@@ -140,7 +140,10 @@ class BleTransport:
         return len(data)
 
     async def _write(self, data: bytes) -> None:
-        await self._client.write_gatt_char(self._write_uuid, data, response=False)
+        # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）
+        for i in range(0, len(data), self._mtu):
+            await self._client.write_gatt_char(
+                self._write_uuid, data[i:i + self._mtu], response=False)
 
     def close(self) -> None:
         if self._client is not None and self._connected:
