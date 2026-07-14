@@ -73,6 +73,13 @@ def app_qss() -> str:
         border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
     QComboBox QAbstractItemView {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
         selection-background-color: {BG_SELECTED}; }}
+    QRadioButton {{ background: transparent; color: {TEXT_PRIMARY}; spacing: 6px; }}
+    QRadioButton:disabled {{ color: {TEXT_DISABLED}; }}
+    QRadioButton::indicator {{ width: 14px; height: 14px; border-radius: 8px;
+        border: 1px solid {BORDER}; background: {BG_INPUT}; }}
+    QRadioButton::indicator:hover {{ border-color: {ACCENT_HOVER}; }}
+    QRadioButton::indicator:checked {{ border: 4px solid {ACCENT}; background: {TEXT_ON_ACCENT}; }}
+    QRadioButton::indicator:disabled {{ border-color: {BG_INPUT}; background: {BG_INPUT}; }}
     QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
         border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
     QPlainTextEdit, QTextEdit {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};

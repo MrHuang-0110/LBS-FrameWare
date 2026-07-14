@@ -22,22 +22,24 @@ def test_default_kind_serial_and_target(app):
     assert cs.selected_name() is None
 
 
-def test_switch_to_ble_lists_devices_and_target(app):
+def test_switch_to_ble_lists_devices_and_target(app, qtbot):
     cs = ConnectionSelector(
         port_lister=lambda: [],
         ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
     cs.set_kind("ble")
-    cs.scan_ble()                        # 触发扫描填充下拉
+    cs.scan_ble()                        # 触发后台扫描
+    qtbot.waitUntil(lambda: cs._ble_combo.count() > 0, timeout=2000)  # 等后台填充完成
     assert cs.selected_kind() == "ble"
     assert cs.selected_target() == "AA:BB"
     assert cs.selected_name() == "ECB02"
 
 
-def test_make_transport_by_kind(app):
+def test_make_transport_by_kind(app, qtbot):
     from lbs_firmware_studio.backend.serial_transport import SerialTransport
     from lbs_firmware_studio.backend.ble_transport import BleTransport
     cs = ConnectionSelector(port_lister=lambda: [_FakePort("COM3", "x")],
                             ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
     assert isinstance(cs.make_transport(), SerialTransport)
     cs.set_kind("ble"); cs.scan_ble()
+    qtbot.waitUntil(lambda: cs._ble_combo.count() > 0, timeout=2000)  # 等后台填充完成
     assert isinstance(cs.make_transport(), BleTransport)
