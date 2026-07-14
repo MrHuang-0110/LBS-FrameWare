@@ -1,7 +1,7 @@
 """连接方式统一入口：串口 / 蓝牙二选一，make_transport() 按 kind 造对等 transport。"""
 from __future__ import annotations
 from typing import Callable
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QRadioButton,
+from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton,
                                QButtonGroup, QStackedWidget, QComboBox, QPushButton)
 from .port_selector import PortSelector
 from ...backend.serial_transport import SerialTransport
@@ -24,12 +24,13 @@ class ConnectionSelector(QWidget):
         self._group = QButtonGroup(self)
         self._group.addButton(self._rb_serial, 0)
         self._group.addButton(self._rb_ble, 1)
-        row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self._rb_serial); row.addWidget(self._rb_ble); row.addStretch(1)
+        # 单选按钮组：左侧一小块横排
+        radios = QHBoxLayout(); radios.setContentsMargins(0, 0, 0, 0); radios.setSpacing(4)
+        radios.addWidget(self._rb_serial); radios.addWidget(self._rb_ble)
 
         self._port = PortSelector(lister=port_lister)
         ble_page = QWidget(); ble_lay = QHBoxLayout(ble_page); ble_lay.setContentsMargins(0, 0, 0, 0)
-        self._ble_combo = QComboBox()
+        self._ble_combo = QComboBox(); self._ble_combo.setMinimumWidth(180)
         self._ble_scan_btn = QPushButton("扫描")
         self._ble_scan_btn.clicked.connect(self.scan_ble)
         ble_lay.addWidget(self._ble_combo, 1); ble_lay.addWidget(self._ble_scan_btn)
@@ -38,8 +39,9 @@ class ConnectionSelector(QWidget):
         self._stack.addWidget(self._port)      # index 0 = serial
         self._stack.addWidget(ble_page)        # index 1 = ble
 
-        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)
-        lay.addLayout(row); lay.addWidget(self._stack)
+        # 根布局单行横排：[○串口 ○蓝牙] [下拉+扫描/刷新]，塞进 36px 顶栏
+        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(8)
+        lay.addLayout(radios); lay.addWidget(self._stack, 1)
 
         self._group.idToggled.connect(self._on_kind_toggled)
 
