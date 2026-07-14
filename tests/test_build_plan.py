@@ -63,6 +63,7 @@ def test_spec_file_has_key_settings():
     assert "qtawesome" in spec                 # 字体数据收集
     assert "COLLECT" in spec                   # onedir（非 onefile）
     assert "LBS-Firmware-Studio" in spec       # 产物名
+    assert "bleak" in spec                     # BLE 后端隐藏导入
 
 
 def test_entry_shim_uses_absolute_import_of_main():

@@ -6,13 +6,15 @@ from PyInstaller.utils.hooks import collect_data_files
 block_cipher = None
 
 datas = collect_data_files("qtawesome")   # fontawesome 字体 .ttf/.json
+datas += collect_data_files("bleak")      # BLE 后端 winrt 依赖数据(bleak 3.x)
 
 a = Analysis(
     ["scripts/entry.py"],   # 顶层垫片，绝对导入包内 main()；不能直接用 gui/app.py(相对导入冻结后报错)
     pathex=["src"],
     binaries=[],
     datas=datas,
-    hiddenimports=["serial.tools.list_ports"],
+    hiddenimports=["serial.tools.list_ports", "bleak", "bleak.backends.winrt",
+                   "bleak.backends.winrt.client", "bleak.backends.winrt.scanner"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
