@@ -1,0 +1,43 @@
+import pytest
+from PySide6.QtWidgets import QApplication
+from lbs_firmware_studio.backend.ble_scanner import BleDevice
+from lbs_firmware_studio.gui.widgets.connection_selector import ConnectionSelector
+
+
+@pytest.fixture(scope="module")
+def app():
+    return QApplication.instance() or QApplication([])
+
+
+class _FakePort:
+    def __init__(self, device, desc):
+        self.device = device; self.description = desc; self.vid = None; self.pid = None
+
+
+def test_default_kind_serial_and_target(app):
+    cs = ConnectionSelector(port_lister=lambda: [_FakePort("COM3", "LBS Serial")],
+                            ble_scan=lambda timeout=5.0: [])
+    assert cs.selected_kind() == "serial"
+    assert cs.selected_target() == "COM3"
+    assert cs.selected_name() is None
+
+
+def test_switch_to_ble_lists_devices_and_target(app):
+    cs = ConnectionSelector(
+        port_lister=lambda: [],
+        ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
+    cs.set_kind("ble")
+    cs.scan_ble()                        # 触发扫描填充下拉
+    assert cs.selected_kind() == "ble"
+    assert cs.selected_target() == "AA:BB"
+    assert cs.selected_name() == "ECB02"
+
+
+def test_make_transport_by_kind(app):
+    from lbs_firmware_studio.backend.serial_transport import SerialTransport
+    from lbs_firmware_studio.backend.ble_transport import BleTransport
+    cs = ConnectionSelector(port_lister=lambda: [_FakePort("COM3", "x")],
+                            ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
+    assert isinstance(cs.make_transport(), SerialTransport)
+    cs.set_kind("ble"); cs.scan_ble()
+    assert isinstance(cs.make_transport(), BleTransport)
