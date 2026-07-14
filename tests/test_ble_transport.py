@@ -87,3 +87,32 @@ def test_write_chunks_by_mtu_and_preserves_bytes():
         assert calls == [20, 20, 10]   # 按 MTU-3 分片
     finally:
         t.close()
+
+
+def test_set_data_handler_receives_bytes_and_read_byte_none():
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    received = []
+    t.open("addr")
+    t.set_data_handler(lambda d: received.append(d))
+    t.start_rx()
+    try:
+        dev.write(b"\x01\x02\x03")
+        import time as _t; _t.sleep(0.1)
+        assert b"".join(received) == b"\x01\x02\x03"
+        assert t.read_byte(timeout=0.1) is None   # handler 模式下 read_byte 无数据
+    finally:
+        t.stop_rx()
+        t.close()
+
+
+def test_close_stops_loop_thread():
+    from tests.fakes import make_fake_ble_pair
+    client, _ = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    assert t._loop_thread is not None and t._loop_thread.is_alive()
+    t.close()
+    assert t.is_open is False
+    assert t._loop_thread is None   # 已 join 清理，无悬挂线程

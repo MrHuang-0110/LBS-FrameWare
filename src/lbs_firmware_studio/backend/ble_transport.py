@@ -125,6 +125,23 @@ class BleTransport:
     def is_open(self) -> bool:
         return self._connected
 
+    def set_data_handler(self, handler: "Callable[[bytes], None] | None") -> None:
+        self._data_handler = handler
+        if handler is not None:
+            while True:
+                try:
+                    self._rx_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+    def start_rx(self) -> None:
+        # notify 在 _connect 时已订阅；此处仅为与 SerialTransport 对等的幂等钩子。
+        pass
+
+    def stop_rx(self) -> None:
+        # 交付随 close() 的 stop_notify/disconnect 结束；对等钩子，无独立 RX 线程。
+        pass
+
     def read_byte(self, timeout: float) -> int | None:
         if self._data_handler is not None:
             return None
