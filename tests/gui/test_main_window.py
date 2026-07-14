@@ -51,7 +51,7 @@ def test_start_firmware_no_port_returns_early(qtbot, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
-    monkeypatch.setattr(w._port, "selected_port", lambda: None)
+    monkeypatch.setattr(w._conn, "selected_target", lambda: None)
     w._start_firmware()  # no port -> early return, must not become busy / crash
     assert w.is_busy() is False
 
@@ -75,7 +75,7 @@ def test_start_script_no_port_returns_early(qtbot, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
-    monkeypatch.setattr(w._port, "selected_port", lambda: None)
+    monkeypatch.setattr(w._conn, "selected_target", lambda: None)
     w._start_script(_P("x/0.py"), 0)   # 无串口 -> 提前返回，不进入 busy
     assert w.is_busy() is False
     assert w._thread is None

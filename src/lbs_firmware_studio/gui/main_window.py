@@ -8,14 +8,13 @@ from PySide6.QtCore import Signal, QThread
 from . import theme
 from .widgets.activity_bar import ActivityBar
 from .widgets.status_bar import StatusBar
-from .widgets.port_selector import PortSelector
+from .widgets.connection_selector import ConnectionSelector
 from .pages.firmware_page import FirmwarePage
 from .pages.script_editor_page import ScriptEditorPage
 from .pages.settings_page import SettingsPage
 from .pages.placeholder_page import PlaceholderPage
 from .pages.monitor_page import MonitorPage
 from .worker import DeployWorker
-from ..backend.serial_transport import SerialTransport
 from ..backend.deployer import DeviceDeployer
 
 # (key, 中文标签, icon, enabled)
@@ -48,13 +47,13 @@ class MainWindow(QWidget):
         # 顶栏
         self._product_lbl = QLabel(f"◆ {profile.name}")
         self._product_lbl.setStyleSheet(f"font-size:14px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
-        self._port = PortSelector()
+        self._conn = ConnectionSelector()
         self._switch_btn = QPushButton("切换产品")
         self._switch_btn.clicked.connect(self.switch_product_requested.emit)
         top = QWidget(); top.setFixedHeight(36); top.setStyleSheet(f"background: {theme.BG_BAR};")
         toplay = QHBoxLayout(top); toplay.setContentsMargins(12, 0, 12, 0)
         toplay.addWidget(self._product_lbl); toplay.addStretch(1)
-        toplay.addWidget(self._port); toplay.addWidget(self._switch_btn)
+        toplay.addWidget(self._conn); toplay.addWidget(self._switch_btn)
 
         # Activity Bar + 页面栈
         self._activity = ActivityBar([(k, icon, en) for k, _, icon, en in _NAV])
@@ -85,7 +84,7 @@ class MainWindow(QWidget):
         self._firmware.start_requested.connect(self._start_firmware)
         # 脚本编辑/下发页接线
         self._editor_page.set_profile(profile)
-        self._editor_page.set_port_getter(self._port.selected_port)
+        self._editor_page.set_port_getter(self._conn.selected_target)
         self._editor_page.deploy_requested.connect(self._start_script)
         self._activity.set_current("firmware")
 
@@ -109,7 +108,15 @@ class MainWindow(QWidget):
         self._stack.setCurrentWidget(self._pages[key])
 
     # ---- 固件更新流程（沿用已修复版本）----
+    def _ble_firmware_blocked(self) -> bool:
+        """蓝牙通道 + 该产品不支持蓝牙固件更新(custom_frame) -> 阻止。"""
+        return (self._conn.selected_kind() == "ble"
+                and not getattr(self._profile, "ble_firmware", False))
+
     def _start_firmware(self):
+        if self._ble_firmware_blocked():
+            QMessageBox.warning(self, "提示", "当前产品的蓝牙通道不支持固件更新，请改用串口")
+            return
         self._run_deploy(self._firmware, "run_firmware")
 
     def _start_script(self, py_path: Path, slot: int):
@@ -120,12 +127,12 @@ class MainWindow(QWidget):
         page 为当前忙碌页(进度/日志回调目标)，run_slot_name 为 worker 上的直连无参运行槽。"""
         if self._busy or (self._thread is not None and self._thread.isRunning()):
             return
-        port = self._port.selected_port()
+        port = self._conn.selected_target()
         if not port:
-            QMessageBox.warning(self, "提示", "未选择串口"); return
+            QMessageBox.warning(self, "提示", "未选择连接目标"); return
         self._busy = True
         page.set_busy(True)
-        self._transport = SerialTransport()
+        self._transport = self._conn.make_transport()
         self._deployer = DeviceDeployer(self._transport)
         self._deployer.progress.connect(page.on_progress)
         self._deployer.state_changed.connect(self._on_state)
@@ -149,7 +156,7 @@ class MainWindow(QWidget):
         self._busy = state in _BUSY_STATES
         self._firmware.set_busy(self._busy)
         self._editor_page.set_busy(self._busy)
-        self._port.setEnabled(not self._busy)
+        self._conn.setEnabled(not self._busy)
         self._switch_btn.setEnabled(not self._busy)
         self._activity.set_locked(self._busy)
 
@@ -160,7 +167,7 @@ class MainWindow(QWidget):
         self._busy = False
         self._firmware.set_busy(False)
         self._editor_page.set_busy(False)
-        self._port.setEnabled(True)
+        self._conn.setEnabled(True)
         self._switch_btn.setEnabled(True)
         self._activity.set_locked(False)
         self._status.set_connection(None, None)
