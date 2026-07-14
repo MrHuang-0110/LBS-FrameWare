@@ -162,6 +162,49 @@ class BleTransport:
             await self._client.write_gatt_char(
                 self._write_uuid, data[i:i + self._mtu], response=False)
 
+    def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
+                        post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:
+        """BLE 版复位重连：断开当前连接 -> 按地址重连；地址失败则用 scanner 按名字兜底。
+        成功后清空 RX 队列(对应 SerialTransport 的重新武装)。"""
+        self._ensure_loop()
+        try:
+            if self._connected:
+                self._run(self._disconnect(), timeout=10.0)
+        except Exception:
+            pass
+        self._connected = False
+
+        for attempt in range(retries):
+            if attempt:
+                time.sleep(delay)
+            # 地址优先
+            if self._try_connect(port):
+                if post_delay > 0:
+                    time.sleep(post_delay)
+                return True
+            # 名字兜底
+            if self._scanner is not None and self._reconnect_name:
+                try:
+                    for dev in self._scanner(disappear_timeout):
+                        if getattr(dev, "name", None) == self._reconnect_name:
+                            if self._try_connect(dev.address):
+                                if post_delay > 0:
+                                    time.sleep(post_delay)
+                                return True
+                except Exception:
+                    pass
+        return False
+
+    def _try_connect(self, address: str) -> bool:
+        try:
+            self._address = address
+            self._run(self._connect())
+            self._rx_queue = queue.Queue()
+            return True
+        except Exception:
+            self._connected = False
+            return False
+
     def close(self) -> None:
         if self._client is not None and self._connected:
             try:

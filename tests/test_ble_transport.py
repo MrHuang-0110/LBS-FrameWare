@@ -116,3 +116,54 @@ def test_close_stops_loop_thread():
     t.close()
     assert t.is_open is False
     assert t._loop_thread is None   # 已 join 清理，无悬挂线程
+
+
+def test_wait_for_reopen_reconnects_same_address():
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    try:
+        ok = t.wait_for_reopen("addr", 0, retries=3, delay=0.02, disappear_timeout=0.1)
+        assert ok is True
+        dev.write(b"\x42")
+        assert t.read_byte(timeout=1.0) == 0x42   # 重连后 notify 重新武装
+    finally:
+        t.close()
+
+
+def test_wait_for_reopen_name_fallback_when_address_fails():
+    from tests.fakes import make_fake_ble_pair
+    from lbs_firmware_studio.backend.ble_scanner import BleDevice
+    good_client, dev = make_fake_ble_pair()
+    attempts = {"n": 0}
+
+    def factory(addr):
+        # 原地址"NEW"连接失败；兜底扫描给出的新地址"NEW2"成功
+        if addr == "NEW2":
+            return good_client
+        attempts["n"] += 1
+        raise RuntimeError("connect failed")
+
+    def scanner(timeout):
+        return [BleDevice(name="ECB02", address="NEW2", rssi=-40)]
+
+    t = BleTransport(client_factory=factory, scanner=scanner, reconnect_name="ECB02")
+    t._ensure_loop()
+    ok = t.wait_for_reopen("NEW", 0, retries=2, delay=0.02, disappear_timeout=0.1)
+    try:
+        assert ok is True
+        dev.write(b"\x43")
+        assert t.read_byte(timeout=1.0) == 0x43
+    finally:
+        t.close()
+
+
+def test_wait_for_reopen_returns_false_when_all_fail():
+    def factory(addr):
+        raise RuntimeError("connect failed")
+    t = BleTransport(client_factory=factory)
+    t._ensure_loop()
+    ok = t.wait_for_reopen("addr", 0, retries=2, delay=0.02, disappear_timeout=0.1)
+    assert ok is False
+    t.close()
