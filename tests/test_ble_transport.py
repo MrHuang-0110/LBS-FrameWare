@@ -167,3 +167,35 @@ def test_wait_for_reopen_returns_false_when_all_fail():
     ok = t.wait_for_reopen("addr", 0, retries=2, delay=0.02, disappear_timeout=0.1)
     assert ok is False
     t.close()
+
+
+def test_connect_half_open_disconnects_client_on_failure():
+    """连上但未发现透传特征值时，_connect 必须先 disconnect 再上抛，避免残留链路。"""
+    import pytest
+
+    class HalfOpenClient:
+        def __init__(self):
+            self.is_connected = False
+            self.disconnect_called = False
+            self.mtu_size = 23
+
+        async def connect(self):
+            self.is_connected = True
+
+        async def disconnect(self):
+            self.disconnect_called = True
+            self.is_connected = False
+
+        def get_characteristics(self):
+            return [("aaa", ["read"])]  # 无 notify/write -> _find_transparent_chars 抛错
+
+        async def start_notify(self, uuid, cb):
+            pass
+
+    client = HalfOpenClient()
+    t = BleTransport(client_factory=lambda addr: client)
+    with pytest.raises(RuntimeError):
+        t.open("addr")
+    assert t.is_open is False
+    assert client.disconnect_called is True   # 半开链路已清理
+    t.close()

@@ -107,11 +107,20 @@ class BleTransport:
     async def _connect(self) -> None:
         self._client = self._client_factory(self._address)
         await self._client.connect()
-        self._notify_uuid, self._write_uuid = _find_transparent_chars(
-            self._client.get_characteristics())
-        self._mtu = max(int(getattr(self._client, "mtu_size", 23)) - 3, 20)
-        await self._client.start_notify(self._notify_uuid, self._on_notify)
-        self._connected = True
+        # 连上后的就绪步骤任一失败都属"半开链路"：先断开(吞异常)再上抛，
+        # 避免残留 BLE 链路占用设备导致后续重连持续失败。
+        try:
+            self._notify_uuid, self._write_uuid = _find_transparent_chars(
+                self._client.get_characteristics())
+            self._mtu = max(int(getattr(self._client, "mtu_size", 23)) - 3, 20)
+            await self._client.start_notify(self._notify_uuid, self._on_notify)
+            self._connected = True
+        except Exception:
+            try:
+                await self._client.disconnect()
+            except Exception:
+                pass
+            raise
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
