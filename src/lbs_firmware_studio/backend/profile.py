@@ -27,6 +27,8 @@ class DeviceProfile:
     display_ports: int = 0    # 启动卡片展示的端口数(纯展示，不影响协议)
     max_slot: int = 0                       # 脚本槽位上限（0..max_slot），按产品配置
     templates_dir: Path = Path("./templates")  # 预加载模板目录，load 时按产品根推导
+    ble_enabled: bool = False                   # 该产品是否支持蓝牙通道
+    ble_firmware: bool = False                  # 蓝牙是否支持固件更新(custom_frame=False)
 
 
 def _to_bytes(val) -> bytes:
@@ -57,6 +59,9 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             templates_dir = _resolve(base, cfg["templates_dir"])
         else:
             templates_dir = _resolve(base, Path(firmware_dir).parent / "templates")
+        ble_cfg = cfg.get("ble", {}) or {}
+        ble_enabled = bool(ble_cfg.get("enabled", False))
+        ble_firmware = bool(ble_cfg.get("firmware_over_ble", False))
         out[name] = DeviceProfile(
             name=name,
             protocol=cfg["protocol"],
@@ -78,6 +83,8 @@ def load_profiles(path: Path) -> dict[str, DeviceProfile]:
             display_ports=cfg.get("display_ports", 0),
             max_slot=cfg.get("max_slot", 0),
             templates_dir=templates_dir,
+            ble_enabled=ble_enabled,
+            ble_firmware=ble_firmware,
         )
     return out
 

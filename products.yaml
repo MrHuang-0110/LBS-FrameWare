@@ -17,6 +17,9 @@ products:
     reopen_retries: 5
     reopen_delay: 2.0
     disappear_timeout: 2.0   # 发复位后等端口消失≤2s判为app模式(实测~1.4s)；超2s未断=已在固件模式,直接传输
+    ble:
+      enabled: true
+      firmware_over_ble: false
   SPARK-AI:
     protocol: custom_frame
     display_ports: 4
@@ -34,6 +37,9 @@ products:
     reopen_retries: 5
     reopen_delay: 2.0
     disappear_timeout: 2.0
+    ble:
+      enabled: true
+      firmware_over_ble: false
   NEXT-AI:
     protocol: ymodem
     display_ports: 2
@@ -52,3 +58,6 @@ products:
     reopen_delay: 3.0
     post_reopen_delay: 0.0   # YMODEM 靠等 'C' 握手，无需固定初始化等待
     disappear_timeout: 2.0
+    ble:
+      enabled: true
+      firmware_over_ble: true

@@ -66,3 +66,35 @@ def test_max_slot_and_templates_dir(tmp_path):
     assert profiles["NEXT-AI"].max_slot == 0   # 未配置默认 0
     # templates_dir 推导为 firmware_dir 的父目录下的 templates（现 resolve 为绝对）
     assert profiles["NEW-AI"].templates_dir == (p.parent / "products/NEW-AI/templates").resolve()
+
+
+def test_ble_fields_loaded(tmp_path):
+    import textwrap as _tw
+    yaml_text = _tw.dedent("""
+        compiler_path: ./tools/rust-msc-latest-win10.exe
+        products:
+          NEW-AI:
+            protocol: custom_frame
+            firmware_dir: ./products/NEW-AI/fwlib
+            ble:
+              enabled: true
+              firmware_over_ble: false
+          NEXT-AI:
+            protocol: ymodem
+            firmware_dir: ./products/NEXT-AI/fwlib
+            ble:
+              enabled: true
+              firmware_over_ble: true
+          SPARK-AI:
+            protocol: custom_frame
+            firmware_dir: ./products/SPARK-AI/fwlib
+    """)
+    p = tmp_path / "products.yaml"; p.write_text(yaml_text)
+    from lbs_firmware_studio.backend.profile import load_profiles
+    profiles = load_profiles(p)
+    assert profiles["NEW-AI"].ble_enabled is True
+    assert profiles["NEW-AI"].ble_firmware is False
+    assert profiles["NEXT-AI"].ble_firmware is True
+    # 未配置 ble 段默认 False
+    assert profiles["SPARK-AI"].ble_enabled is False
+    assert profiles["SPARK-AI"].ble_firmware is False
