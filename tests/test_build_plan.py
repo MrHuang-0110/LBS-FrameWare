@@ -59,10 +59,20 @@ def test_plan_targets_under_dst(tmp_path):
 def test_spec_file_has_key_settings():
     root = Path(__file__).resolve().parents[1]
     spec = (root / "LBS-Firmware-Studio.spec").read_text(encoding="utf-8")
-    assert "app.py" in spec                    # 入口
+    assert "entry.py" in spec                   # 顶层入口垫片(非 app.py，相对导入冻结后会报错)
     assert "qtawesome" in spec                 # 字体数据收集
     assert "COLLECT" in spec                   # onedir（非 onefile）
     assert "LBS-Firmware-Studio" in spec       # 产物名
+
+
+def test_entry_shim_uses_absolute_import_of_main():
+    """打包入口必须以绝对导入暴露 main：回归 'attempted relative import with no
+    known parent package'——冻结后入口作为 __main__ 运行，相对导入无父包会崩。"""
+    root = Path(__file__).resolve().parents[1]
+    entry = (root / "scripts" / "entry.py").read_text(encoding="utf-8")
+    assert "from lbs_firmware_studio.gui.app import main" in entry
+    assert "main()" in entry
+
 
 
 def test_pyproject_has_build_extra():

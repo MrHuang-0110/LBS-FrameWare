@@ -8,7 +8,7 @@ block_cipher = None
 datas = collect_data_files("qtawesome")   # fontawesome 字体 .ttf/.json
 
 a = Analysis(
-    ["src/lbs_firmware_studio/gui/app.py"],
+    ["scripts/entry.py"],   # 顶层垫片，绝对导入包内 main()；不能直接用 gui/app.py(相对导入冻结后报错)
     pathex=["src"],
     binaries=[],
     datas=datas,
