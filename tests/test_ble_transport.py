@@ -29,9 +29,20 @@ from lbs_firmware_studio.backend.ble_transport import BleTransport, _find_transp
 
 def test_find_transparent_chars_picks_notify_and_write():
     pairs = [("aaa", ["read"]), ("bbb", ["notify"]), ("ccc", ["write-without-response"])]
-    notify, write = _find_transparent_chars(pairs)
+    notify, write, write_response = _find_transparent_chars(pairs)
     assert notify == "bbb"
     assert write == "ccc"
+    assert write_response is False   # 仅 write-without-response -> 不用带响应写
+
+
+def test_find_transparent_chars_prefers_response_write_when_supported():
+    # 真机 ECB02：写特征值 fff2 支持 write/write-without-response -> 选带响应写做背压
+    pairs = [("fff2", ["write", "write-without-response"]),
+             ("fff1", ["notify", "write", "write-without-response", "read"])]
+    notify, write, write_response = _find_transparent_chars(pairs)
+    assert notify == "fff1"
+    assert write == "fff2"
+    assert write_response is True
 
 
 def test_find_transparent_chars_raises_when_missing():

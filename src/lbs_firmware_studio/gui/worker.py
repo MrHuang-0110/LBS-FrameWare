@@ -21,7 +21,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 class DeployWorker(QObject):
     finished = Signal()
 
-    def __init__(self, transport, deployer, parent=None):
+    def __init__(self, transport, deployer, parent=None, owns_lifecycle: bool = True):
         super().__init__(parent)
         self._transport = transport
         self._deployer = deployer
@@ -29,6 +29,9 @@ class DeployWorker(QObject):
         self._port = None
         self._py_path = None
         self._slot = 0
+        # owns_lifecycle=False：transport 是外部已连接的持久链路，本 worker 不 open/close，
+        # 仅武装 RX 与执行下发（复用活链路，避免二次 open 抢占同一端口/BLE 链路）。
+        self._owns_lifecycle = owns_lifecycle
 
     def set_job(self, profile, port: str, py_path=None, slot: int = 0) -> None:
         """预存本次任务参数。固件更新只需 profile/port；脚本下发另带 py_path/slot。"""
@@ -41,7 +44,8 @@ class DeployWorker(QObject):
     def run_firmware(self) -> None:
         profile, port = self._profile, self._port
         try:
-            self._transport.open(port, profile.baud)
+            if self._owns_lifecycle:
+                self._transport.open(port, profile.baud)
             self._transport.start_rx()
             self._deployer.update_firmware(profile, port)
         except Exception as e:
@@ -55,7 +59,8 @@ class DeployWorker(QObject):
                 pass
         finally:
             try:
-                self._transport.close()
+                if self._owns_lifecycle:
+                    self._transport.close()
             except Exception:
                 pass
             self.finished.emit()
@@ -65,7 +70,8 @@ class DeployWorker(QObject):
         profile, port = self._profile, self._port
         opened = False
         try:
-            self._transport.open(port, profile.baud)
+            if self._owns_lifecycle:
+                self._transport.open(port, profile.baud)
             self._transport.start_rx()
             opened = True
             self._deployer.deploy_script(profile, port, self._py_path, self._slot)
@@ -80,7 +86,8 @@ class DeployWorker(QObject):
                     pass
         finally:
             try:
-                self._transport.close()
+                if self._owns_lifecycle:
+                    self._transport.close()
             except Exception:
                 pass
             self.finished.emit()

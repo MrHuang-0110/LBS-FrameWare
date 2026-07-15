@@ -100,3 +100,19 @@ def test_update_firmware_ymodem():
             assert reopened == ["COM_FAKE"]
     finally:
         t.stop_rx(); sim.stop()
+
+
+class _FakeLink:
+    """最小 transport 桩：只提供 link_kind，供 _make_protocol 选块大小。"""
+    def __init__(self, kind):
+        self.link_kind = kind
+
+
+def test_ymodem_block_size_128_over_ble_1024_over_serial():
+    """蓝牙 YMODEM 用 128B 块(ECB02 透传单帧≤248B)，串口沿用 profile.chunk_size(1024)。
+    真机根因：1024 块经蓝牙拆多片致设备缓冲溢出→NAK。对齐 pika_deploy.py BT_YMODEM_BLOCK。"""
+    prof = _profile("NEXT-AI", "ymodem")   # chunk_size=1024
+    ble_proto = DeviceDeployer(transport=_FakeLink("ble"))._make_protocol(prof)
+    assert ble_proto.block_size == 128
+    ser_proto = DeviceDeployer(transport=_FakeLink("serial"))._make_protocol(prof)
+    assert ser_proto.block_size == 1024

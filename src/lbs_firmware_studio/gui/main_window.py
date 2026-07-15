@@ -85,8 +85,14 @@ class MainWindow(QWidget):
         # 脚本编辑/下发页接线
         self._editor_page.set_profile(profile)
         self._editor_page.set_port_getter(self._conn.selected_target)
+        self._conn.set_baud_getter(lambda: getattr(self._profile, "baud", 0))
         self._editor_page.deploy_requested.connect(self._start_script)
+        # 顶栏连接状态变化时刷新监控页入口（连上=复用该链路，断开=退回本页串口选择）
+        self._conn.connection_changed.connect(self._on_connection_changed)
+        # 串口/蓝牙设备选择变化时更新下发按钮使能态（未选目标时禁用）
+        self._conn.target_changed.connect(self._update_deploy_buttons)
         self._activity.set_current("firmware")
+        self._update_deploy_buttons()  # 初始状态：PortSelector 异步扫描完成前按钮禁用
 
     def _make_page(self, key):
         if key == "firmware":
@@ -96,6 +102,8 @@ class MainWindow(QWidget):
         if key == "monitor":
             self._monitor = MonitorPage()
             self._monitor.set_profile(self._profile)
+            # 监控复用顶栏持久链路（串口/蓝牙）；未连接时回退本页串口选择
+            self._monitor.set_transport_getter(self._conn.persistent_transport)
             return self._monitor
         if key == "settings":
             return SettingsPage(self._raw, self._path)
@@ -106,6 +114,24 @@ class MainWindow(QWidget):
         if key != "monitor" and self._pages.get("monitor") is self._stack.currentWidget():
             self._monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
+
+    def _on_connection_changed(self, connected: bool) -> None:
+        """顶栏连接状态变化：刷新监控页入口；断开时若正在监控则先停，避免用死链路。"""
+        monitor = self._pages.get("monitor")
+        if monitor is None:
+            return
+        if not connected:
+            monitor.stop_monitor()
+        monitor.set_transport_getter(self._conn.persistent_transport)
+        self._update_deploy_buttons()
+
+    def _update_deploy_buttons(self) -> None:
+        """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
+        未选串口/蓝牙设备时固件更新和脚本下发按钮均禁用，避免点了弹警告。"""
+        has_target = self._conn.selected_target() is not None
+        can_firmware = has_target and not self._ble_firmware_blocked()
+        self._firmware._start.setEnabled(can_firmware and not self._busy)
+        self._editor_page._deploy_btn.setEnabled(has_target and not self._busy)
 
     # ---- 固件更新流程（沿用已修复版本）----
     def _ble_firmware_blocked(self) -> bool:
@@ -132,14 +158,21 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "提示", "未选择连接目标"); return
         self._busy = True
         page.set_busy(True)
-        self._transport = self._conn.make_transport()
+        # 已手动建连则复用活链路（worker 不再 open/close）；否则沿用一次性建连
+        persistent = self._conn.persistent_transport()
+        if persistent is not None:
+            self._transport = persistent
+            owns_lifecycle = False
+        else:
+            self._transport = self._conn.make_transport()
+            owns_lifecycle = True
         self._deployer = DeviceDeployer(self._transport)
         self._deployer.progress.connect(page.on_progress)
         self._deployer.state_changed.connect(self._on_state)
         self._deployer.log.connect(page.on_log)
         self._deployer.error.connect(self._on_error)
         self._thread = QThread()
-        self._worker = DeployWorker(self._transport, self._deployer)
+        self._worker = DeployWorker(self._transport, self._deployer, owns_lifecycle=owns_lifecycle)
         self._worker.set_job(self._profile, port, **job_kwargs)
         self._worker.moveToThread(self._thread)
         # 直连 worker 的运行槽(带子线程 affinity)，勿用 lambda——否则工作会跑在主线程卡死 GUI
@@ -156,6 +189,8 @@ class MainWindow(QWidget):
         self._busy = state in _BUSY_STATES
         self._firmware.set_busy(self._busy)
         self._editor_page.set_busy(self._busy)
+        if not self._busy:
+            self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮
         self._conn.setEnabled(not self._busy)
         self._switch_btn.setEnabled(not self._busy)
         self._activity.set_locked(self._busy)
@@ -167,6 +202,7 @@ class MainWindow(QWidget):
         self._busy = False
         self._firmware.set_busy(False)
         self._editor_page.set_busy(False)
+        self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）
         self._conn.setEnabled(True)
         self._switch_btn.setEnabled(True)
         self._activity.set_locked(False)

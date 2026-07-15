@@ -1,0 +1,984 @@
+diff --git a/src/lbs_firmware_studio/backend/ble_transport.py b/src/lbs_firmware_studio/backend/ble_transport.py
+index be4fe8c..94216a3 100644
+--- a/src/lbs_firmware_studio/backend/ble_transport.py
++++ b/src/lbs_firmware_studio/backend/ble_transport.py
+@@ -3,9 +3,11 @@
+ 使协议层 read_byte 拉取逻辑零改动。"""
+ from __future__ import annotations
+ import asyncio
++import os
+ import queue
+ import threading
+ import time
++from pathlib import Path
+ from typing import Callable
+ 
+ try:
+@@ -14,17 +16,49 @@ except ImportError:  # 未安装 bleak：串口功能不受影响，选蓝牙时
+     BleakClient = None
+ 
+ 
+-def _find_transparent_chars(pairs) -> tuple[str, str]:
+-    """从 [(uuid, properties)] 里挑一个 notify(收) + 一个 write(发) 特征值。"""
++# ---- 诊断日志（排障用）：默认关闭，环境变量 LBS_BLE_DEBUG=1 开启 ----
++# 纯旁路记录，绝不影响任何收发逻辑。
++def _ble_debug_enabled() -> bool:
++    return bool(os.environ.get("LBS_BLE_DEBUG"))
++
++
++def _ble_log_path() -> Path:
++    return Path.home() / "ble_debug.log"
++
++
++def _ble_log(msg: str) -> None:
++    if not _ble_debug_enabled():
++        return
++    try:
++        line = f"[{time.strftime('%H:%M:%S')}] {msg}\n"
++        with open(_ble_log_path(), "a", encoding="utf-8") as f:
++            f.write(line)
++    except Exception:
++        pass  # 诊断日志绝不能反过来影响主流程
++
++
++def _hex_preview(data: bytes, limit: int = 32) -> str:
++    head = data[:limit]
++    tail = "..." if len(data) > limit else ""
++    return head.hex(" ") + tail
++
++
++def _find_transparent_chars(pairs) -> tuple[str, str, bool]:
++    """从 [(uuid, properties)] 里挑一个 notify(收) + 一个 write(发) 特征值。
++    第三个返回值 write_response：所选写特征值是否支持带响应写(write)。
++    带响应写会逐片等设备 BLE 层确认，形成天然背压，避免多分片背靠背连发时
++    设备侧透传缓冲溢出丢字节（真机 YMODEM 1024B 数据块经蓝牙被 NAK 的根因）。"""
+     notify_uuid = write_uuid = None
++    write_response = False
+     for uuid, props in pairs:
+         if notify_uuid is None and ("notify" in props or "indicate" in props):
+             notify_uuid = uuid
+         if write_uuid is None and ("write" in props or "write-without-response" in props):
+             write_uuid = uuid
++            write_response = "write" in props   # 支持带响应写则优先用它做流控
+     if notify_uuid is None or write_uuid is None:
+         raise RuntimeError("未发现可透传特征值")
+-    return notify_uuid, write_uuid
++    return notify_uuid, write_uuid, write_response
+ 
+ 
+ class _RealBleakClient:
+@@ -70,6 +104,8 @@ def _default_client_factory(address: str):
+ 
+ 
+ class BleTransport:
++    link_kind = "ble"   # 供 deployer 区分链路：蓝牙 YMODEM 须用 128B 块(见 deployer._make_protocol)
++
+     def __init__(self, client_factory: "Callable[[str], object] | None" = None,
+                  scanner: "Callable[[float], list] | None" = None,
+                  reconnect_name: "str | None" = None):
+@@ -84,6 +120,7 @@ class BleTransport:
+         self._data_handler: Callable[[bytes], None] | None = None
+         self._notify_uuid: str | None = None
+         self._write_uuid: str | None = None
++        self._write_response = False   # 写特征值是否支持带响应写(逐片确认，做背压)
+         self._mtu = 20
+         self._connected = False
+ 
+@@ -110,12 +147,18 @@ class BleTransport:
+         # 连上后的就绪步骤任一失败都属"半开链路"：先断开(吞异常)再上抛，
+         # 避免残留 BLE 链路占用设备导致后续重连持续失败。
+         try:
+-            self._notify_uuid, self._write_uuid = _find_transparent_chars(
+-                self._client.get_characteristics())
++            chars = self._client.get_characteristics()
++            _ble_log(f"connect {self._address}; 特征值清单: " +
++                     "; ".join(f"{u}={p}" for u, p in chars))
++            self._notify_uuid, self._write_uuid, self._write_response = _find_transparent_chars(chars)
+             self._mtu = max(int(getattr(self._client, "mtu_size", 23)) - 3, 20)
++            _ble_log(f"选中 notify={self._notify_uuid} write={self._write_uuid} "
++                     f"mtu_size={getattr(self._client, 'mtu_size', 23)} 分片={self._mtu} "
++                     f"带响应写={self._write_response}")
+             await self._client.start_notify(self._notify_uuid, self._on_notify)
+             self._connected = True
+-        except Exception:
++        except Exception as e:
++            _ble_log(f"连接就绪失败: {e!r}")
+             try:
+                 await self._client.disconnect()
+             except Exception:
+@@ -124,6 +167,8 @@ class BleTransport:
+ 
+     def _on_notify(self, sender, data) -> None:
+         b = bytes(data)
++        _ble_log(f"notify recv {len(b)}B mode={'handler' if self._data_handler else 'queue'} "
++                 f"hex={_hex_preview(b)}")
+         if self._data_handler is not None:
+             self._data_handler(b)
+         else:
+@@ -162,14 +207,22 @@ class BleTransport:
+     def write(self, data: bytes) -> int:
+         if not self._connected:
+             raise RuntimeError("ble not connected")
+-        self._run(self._write(bytes(data)))
++        data = bytes(data)
++        _ble_log(f"write {len(data)}B -> {self._write_uuid} hex={_hex_preview(data)}")
++        try:
++            self._run(self._write(data))
++        except Exception as e:
++            _ble_log(f"write 失败: {e!r}")
++            raise
+         return len(data)
+ 
+     async def _write(self, data: bytes) -> None:
+-        # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）
++        # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）。
++        # 带响应写(response=True)逐片等设备 BLE 层确认，形成背压，避免多分片背靠背
++        # 连发时设备侧透传缓冲溢出丢字节；仅在写特征值支持 'write' 时启用。
+         for i in range(0, len(data), self._mtu):
+             await self._client.write_gatt_char(
+-                self._write_uuid, data[i:i + self._mtu], response=False)
++                self._write_uuid, data[i:i + self._mtu], response=self._write_response)
+ 
+     def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
+                         post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:
+diff --git a/src/lbs_firmware_studio/backend/deployer.py b/src/lbs_firmware_studio/backend/deployer.py
+index 7dcf4f5..d3a238d 100644
+--- a/src/lbs_firmware_studio/backend/deployer.py
++++ b/src/lbs_firmware_studio/backend/deployer.py
+@@ -44,7 +44,12 @@ class DeviceDeployer(QObject):
+                                        last_frame_ack=profile.last_frame_ack,
+                                        filename_encoding=profile.filename_encoding,
+                                        log_cb=self.log.emit)
+-        return YmodemProtocol(block_size=profile.chunk_size, ack_timeout=12.0,
++        # YMODEM 块大小按链路区分：蓝牙(ECB02 透传)单帧 ≤248B，1024 块会被拆多片致设备缓冲
++        # 溢出→NAK→CAN(真机复现)。故蓝牙用 128B 块(YMODEM 包 133B 一次发出)，USB 沿用 1024。
++        # 对齐参考工具 LBS-NEXT-AI/tools/pika_deploy.py 的 BT_YMODEM_BLOCK/USB_YMODEM_BLOCK。
++        is_ble = getattr(self._transport, "link_kind", "serial") == "ble"
++        block_size = 128 if is_ble else profile.chunk_size
++        return YmodemProtocol(block_size=block_size, ack_timeout=90.0 if is_ble else 12.0,
+                               log_cb=self.log.emit)
+ 
+     def _enter_and_reconnect(self, proto, profile: DeviceProfile, port: str, *, firmware: bool) -> None:
+diff --git a/src/lbs_firmware_studio/backend/serial_transport.py b/src/lbs_firmware_studio/backend/serial_transport.py
+index e8d08cc..168dbbd 100644
+--- a/src/lbs_firmware_studio/backend/serial_transport.py
++++ b/src/lbs_firmware_studio/backend/serial_transport.py
+@@ -11,6 +11,8 @@ except ImportError:  # 测试环境用 FakeSerial，pyserial 可能未装
+ 
+ 
+ class SerialTransport:
++    link_kind = "serial"   # 供 deployer 区分链路(与 BleTransport.link_kind 对等)
++
+     def __init__(self, serial_obj=None, reopen_factory: "Callable[[str, int], object] | None" = None,
+                  port_lister: "Callable[[], set[str]] | None" = None):
+         self._serial = serial_obj
+diff --git a/src/lbs_firmware_studio/gui/main_window.py b/src/lbs_firmware_studio/gui/main_window.py
+index bf12ab6..f7fe19f 100644
+--- a/src/lbs_firmware_studio/gui/main_window.py
++++ b/src/lbs_firmware_studio/gui/main_window.py
+@@ -85,8 +85,14 @@ class MainWindow(QWidget):
+         # 脚本编辑/下发页接线
+         self._editor_page.set_profile(profile)
+         self._editor_page.set_port_getter(self._conn.selected_target)
++        self._conn.set_baud_getter(lambda: getattr(self._profile, "baud", 0))
+         self._editor_page.deploy_requested.connect(self._start_script)
++        # 顶栏连接状态变化时刷新监控页入口（连上=复用该链路，断开=退回本页串口选择）
++        self._conn.connection_changed.connect(self._on_connection_changed)
++        # 串口/蓝牙设备选择变化时更新下发按钮使能态（未选目标时禁用）
++        self._conn.target_changed.connect(self._update_deploy_buttons)
+         self._activity.set_current("firmware")
++        self._update_deploy_buttons()  # 初始状态：PortSelector 异步扫描完成前按钮禁用
+ 
+     def _make_page(self, key):
+         if key == "firmware":
+@@ -96,6 +102,8 @@ class MainWindow(QWidget):
+         if key == "monitor":
+             self._monitor = MonitorPage()
+             self._monitor.set_profile(self._profile)
++            # 监控复用顶栏持久链路（串口/蓝牙）；未连接时回退本页串口选择
++            self._monitor.set_transport_getter(self._conn.persistent_transport)
+             return self._monitor
+         if key == "settings":
+             return SettingsPage(self._raw, self._path)
+@@ -107,6 +115,24 @@ class MainWindow(QWidget):
+             self._monitor.stop_monitor()
+         self._stack.setCurrentWidget(self._pages[key])
+ 
++    def _on_connection_changed(self, connected: bool) -> None:
++        """顶栏连接状态变化：刷新监控页入口；断开时若正在监控则先停，避免用死链路。"""
++        monitor = self._pages.get("monitor")
++        if monitor is None:
++            return
++        if not connected:
++            monitor.stop_monitor()
++        monitor.set_transport_getter(self._conn.persistent_transport)
++        self._update_deploy_buttons()
++
++    def _update_deploy_buttons(self) -> None:
++        """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
++        未选串口/蓝牙设备时固件更新和脚本下发按钮均禁用，避免点了弹警告。"""
++        has_target = self._conn.selected_target() is not None
++        can_firmware = has_target and not self._ble_firmware_blocked()
++        self._firmware._start.setEnabled(can_firmware and not self._busy)
++        self._editor_page._deploy_btn.setEnabled(has_target and not self._busy)
++
+     # ---- 固件更新流程（沿用已修复版本）----
+     def _ble_firmware_blocked(self) -> bool:
+         """蓝牙通道 + 该产品不支持蓝牙固件更新(custom_frame) -> 阻止。"""
+@@ -132,14 +158,21 @@ class MainWindow(QWidget):
+             QMessageBox.warning(self, "提示", "未选择连接目标"); return
+         self._busy = True
+         page.set_busy(True)
+-        self._transport = self._conn.make_transport()
++        # 已手动建连则复用活链路（worker 不再 open/close）；否则沿用一次性建连
++        persistent = self._conn.persistent_transport()
++        if persistent is not None:
++            self._transport = persistent
++            owns_lifecycle = False
++        else:
++            self._transport = self._conn.make_transport()
++            owns_lifecycle = True
+         self._deployer = DeviceDeployer(self._transport)
+         self._deployer.progress.connect(page.on_progress)
+         self._deployer.state_changed.connect(self._on_state)
+         self._deployer.log.connect(page.on_log)
+         self._deployer.error.connect(self._on_error)
+         self._thread = QThread()
+-        self._worker = DeployWorker(self._transport, self._deployer)
++        self._worker = DeployWorker(self._transport, self._deployer, owns_lifecycle=owns_lifecycle)
+         self._worker.set_job(self._profile, port, **job_kwargs)
+         self._worker.moveToThread(self._thread)
+         # 直连 worker 的运行槽(带子线程 affinity)，勿用 lambda——否则工作会跑在主线程卡死 GUI
+@@ -156,6 +189,8 @@ class MainWindow(QWidget):
+         self._busy = state in _BUSY_STATES
+         self._firmware.set_busy(self._busy)
+         self._editor_page.set_busy(self._busy)
++        if not self._busy:
++            self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮
+         self._conn.setEnabled(not self._busy)
+         self._switch_btn.setEnabled(not self._busy)
+         self._activity.set_locked(self._busy)
+@@ -167,6 +202,7 @@ class MainWindow(QWidget):
+         self._busy = False
+         self._firmware.set_busy(False)
+         self._editor_page.set_busy(False)
++        self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）
+         self._conn.setEnabled(True)
+         self._switch_btn.setEnabled(True)
+         self._activity.set_locked(False)
+diff --git a/src/lbs_firmware_studio/gui/monitor_worker.py b/src/lbs_firmware_studio/gui/monitor_worker.py
+index 9ac7fb8..b62d730 100644
+--- a/src/lbs_firmware_studio/gui/monitor_worker.py
++++ b/src/lbs_firmware_studio/gui/monitor_worker.py
+@@ -19,10 +19,13 @@ class MonitorWorker(QObject):
+         super().__init__(parent)
+         self._transport = transport if transport is not None else SerialTransport()
+         self._parser = MonitorParser()
++        self._owns_lifecycle = True   # True=本 worker 自己 open/close；False=复用外部持久链路
+ 
+     def start(self, port: str, baud: int) -> None:
++        """自建串口链路：本 worker 负责 open/close。"""
+         try:
+             self._parser = MonitorParser()          # 每次连接重置缓冲
++            self._owns_lifecycle = True
+             self._transport.open(port, baud)
+             self._transport.set_data_handler(self._on_data)
+             self._transport.start_rx()
+@@ -31,6 +34,20 @@ class MonitorWorker(QObject):
+             self.error.emit(f"打开串口失败: {e}")
+             self.state_changed.emit("disconnected")
+ 
++    def start_on(self, transport) -> None:
++        """复用外部已连接的持久链路（串口/蓝牙）：不 open/不 close，仅挂 data_handler
++        接管字节流；stop 时摘掉 handler 把链路归还给顶栏，不断开。"""
++        try:
++            self._parser = MonitorParser()
++            self._transport = transport
++            self._owns_lifecycle = False
++            transport.set_data_handler(self._on_data)
++            transport.start_rx()                     # 幂等：串口重新武装RX；蓝牙为空操作
++            self.state_changed.emit("connected")
++        except Exception as e:
++            self.error.emit(f"接入连接失败: {e}")
++            self.state_changed.emit("disconnected")
++
+     def send_frame(self, frame: bytes) -> None:
+         try:
+             self._transport.write(frame)
+@@ -39,7 +56,11 @@ class MonitorWorker(QObject):
+ 
+     def stop(self) -> None:
+         try:
+-            self._transport.close()
++            if self._owns_lifecycle:
++                self._transport.close()
++            else:
++                # 归还持久链路：摘掉 handler 让其回到队列模式，不关闭链路
++                self._transport.set_data_handler(None)
+         except Exception:
+             pass
+         self.state_changed.emit("disconnected")
+diff --git a/src/lbs_firmware_studio/gui/pages/monitor_page.py b/src/lbs_firmware_studio/gui/pages/monitor_page.py
+index 23064bc..af22da3 100644
+--- a/src/lbs_firmware_studio/gui/pages/monitor_page.py
++++ b/src/lbs_firmware_studio/gui/pages/monitor_page.py
+@@ -22,6 +22,7 @@ class MonitorPage(QWidget):
+         self._cards: dict[int, SensorCard] = {}
+         self._latest: dict | None = None
+         self._monitoring = False
++        self._transport_getter = lambda: None   # 由 MainWindow 注入：取顶栏已连接的持久链路
+ 
+         self._worker = MonitorWorker()
+         self._worker.frame_parsed.connect(self._on_frame)
+@@ -36,8 +37,12 @@ class MonitorPage(QWidget):
+         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
+         self._update_btn.clicked.connect(self._open_sensor_update)
+         self._update_btn.setEnabled(False)     # 需监控中才能下发
++        self._conn_hint = QLabel("")           # 顶栏已连接时提示走哪条链路
++        self._conn_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
+         top = QHBoxLayout()
+-        top.addWidget(QLabel("串口:")); top.addWidget(self._port, 1)
++        self._port_lbl = QLabel("串口:")
++        top.addWidget(self._port_lbl); top.addWidget(self._port, 1)
++        top.addWidget(self._conn_hint, 1)
+         top.addWidget(self._start_btn); top.addWidget(self._update_btn)
+ 
+         # 卡片区（两列）
+@@ -68,6 +73,22 @@ class MonitorPage(QWidget):
+         self._profile = profile
+         self._rebuild_cards()
+ 
++    def set_transport_getter(self, getter) -> None:
++        """注入取顶栏持久链路的回调。返回非 None 时监控复用该链路（串口/蓝牙皆可）。"""
++        self._transport_getter = getter
++        self._sync_conn_ui()
++
++    def _sync_conn_ui(self) -> None:
++        """按顶栏是否已连接，切换「本地串口选择」与「复用顶栏连接」两种入口的可见性。"""
++        connected = self._transport_getter() is not None
++        # 已连接：隐藏本页串口下拉，改提示复用顶栏链路
++        self._port_lbl.setVisible(not connected)
++        self._port.setVisible(not connected)
++        self._conn_hint.setVisible(connected)
++        if connected:
++            self._conn_hint.setText("● 使用顶栏连接")
++            self._conn_hint.setStyleSheet(f"color:{theme.SUCCESS}; background:transparent;")
++
+     def _rebuild_cards(self) -> None:
+         # 清空旧卡片
+         while self._grid.count():
+@@ -104,9 +125,14 @@ class MonitorPage(QWidget):
+             self.start_monitor()
+ 
+     def start_monitor(self) -> None:
++        # 优先复用顶栏已连接的持久链路（串口或蓝牙）；否则回退到本页串口选择
++        transport = self._transport_getter()
++        if transport is not None:
++            self._worker.start_on(transport)
++            return
+         port = self._port.selected_port()
+         if not port:
+-            QMessageBox.warning(self, "提示", "未选择串口"); return
++            QMessageBox.warning(self, "提示", "未选择串口，或先在顶栏连接设备"); return
+         baud = getattr(self._profile, "baud", 115200)
+         self._worker.start(port, baud)
+ 
+diff --git a/src/lbs_firmware_studio/gui/widgets/connection_selector.py b/src/lbs_firmware_studio/gui/widgets/connection_selector.py
+index 7561eb6..cdc5dcc 100644
+--- a/src/lbs_firmware_studio/gui/widgets/connection_selector.py
++++ b/src/lbs_firmware_studio/gui/widgets/connection_selector.py
+@@ -1,14 +1,32 @@
+-"""连接方式统一入口：串口 / 蓝牙二选一，make_transport() 按 kind 造对等 transport。"""
++"""连接方式统一入口：串口 / 蓝牙二选一 + 连接/断开。
++
++- 模式切换用绿色小圆点标记选中项（替代原丑的粗蓝边单选样式）。
++- 「连接」按钮建立并保持链路（BLE 连接会阻塞，故在后台线程跑），
++  再点变「断开」。绿色状态点表示已连接。
++- 已连接时 make_transport() 返回这条活链路，下发流程复用它（不重开/不关闭）。
++"""
+ from __future__ import annotations
+ from typing import Callable
+ from PySide6.QtCore import QObject, QThread, Signal, Slot
+-from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton,
++from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton, QLabel,
+                                QButtonGroup, QStackedWidget, QComboBox, QPushButton)
+ from .port_selector import PortSelector
++from .. import theme
+ from ...backend.serial_transport import SerialTransport
+ from ...backend.ble_transport import BleTransport
+ from ...backend.ble_scanner import scan as ble_scan_default
+ 
++# 模式切换：选中项用绿色实心小圆点标记，未选中为空心灰圈（比默认粗蓝边清爽）
++_RADIO_QSS = f"""
++QRadioButton {{ background: transparent; color: {theme.TEXT_PRIMARY}; spacing: 6px; }}
++QRadioButton:disabled {{ color: {theme.TEXT_DISABLED}; }}
++QRadioButton::indicator {{ width: 12px; height: 12px; border-radius: 7px;
++    border: 1px solid {theme.BORDER}; background: transparent; }}
++QRadioButton::indicator:hover {{ border-color: {theme.SUCCESS}; }}
++QRadioButton::indicator:checked {{ border: 1px solid {theme.SUCCESS};
++    background: {theme.SUCCESS}; }}
++"""
++
+ 
+ class _ScanWorker(QObject):
+     """把阻塞 ~5s 的 BLE 扫描丢到后台线程跑，扫完 emit devices 回主线程。仅做发现，不碰链路。"""
+@@ -28,7 +46,31 @@ class _ScanWorker(QObject):
+             self.failed.emit(str(e))
+ 
+ 
++class _ConnectWorker(QObject):
++    """把阻塞的建连(open+start_rx，BLE 可达数秒)丢到后台线程，成功/失败回主线程。"""
++    done = Signal()
++    failed = Signal(str)
++
++    def __init__(self, transport, port: str, baud: int, parent=None):
++        super().__init__(parent)
++        self._transport = transport
++        self._port = port
++        self._baud = baud
++
++    @Slot()
++    def run(self) -> None:
++        try:
++            self._transport.open(self._port, self._baud)
++            self._transport.start_rx()
++            self.done.emit()
++        except Exception as e:
++            self.failed.emit(str(e))
++
++
+ class ConnectionSelector(QWidget):
++    connection_changed = Signal(bool)   # True=已连接 False=已断开
++    target_changed = Signal()           # 选中的串口/蓝牙设备变化（用于更新下发按钮使能态）
++
+     def __init__(self, port_lister: "Callable | None" = None,
+                  ble_scan: "Callable | None" = None,
+                  serial_factory=SerialTransport, ble_factory=BleTransport, parent=None):
+@@ -36,8 +78,12 @@ class ConnectionSelector(QWidget):
+         self._ble_scan = ble_scan or (lambda timeout=5.0: ble_scan_default(timeout))
+         self._serial_factory = serial_factory
+         self._ble_factory = ble_factory
++        self._baud_getter: "Callable[[], int]" = lambda: 0
+         self._scan_thread = None       # 后台扫描线程引用，防 GC
+         self._scan_worker = None
++        self._conn_thread = None       # 后台建连线程引用，防 GC
++        self._conn_worker = None
++        self._transport = None         # 已连接的活链路（None=未连接）
+ 
+         self._rb_serial = QRadioButton("串口")
+         self._rb_ble = QRadioButton("蓝牙")
+@@ -45,13 +91,16 @@ class ConnectionSelector(QWidget):
+         self._group = QButtonGroup(self)
+         self._group.addButton(self._rb_serial, 0)
+         self._group.addButton(self._rb_ble, 1)
+-        # 单选按钮组：左侧一小块横排
+-        radios = QHBoxLayout(); radios.setContentsMargins(0, 0, 0, 0); radios.setSpacing(4)
++        # 单选按钮组：左侧一小块横排，绿色小圆点标记选中项
++        radios = QHBoxLayout(); radios.setContentsMargins(0, 0, 0, 0); radios.setSpacing(10)
+         radios.addWidget(self._rb_serial); radios.addWidget(self._rb_ble)
++        for rb in (self._rb_serial, self._rb_ble):
++            rb.setStyleSheet(_RADIO_QSS)
+ 
+         self._port = PortSelector(lister=port_lister)
+-        ble_page = QWidget(); ble_lay = QHBoxLayout(ble_page); ble_lay.setContentsMargins(0, 0, 0, 0)
+-        self._ble_combo = QComboBox(); self._ble_combo.setMinimumWidth(180)
++        ble_page = QWidget(); ble_lay = QHBoxLayout(ble_page)
++        ble_lay.setContentsMargins(0, 0, 0, 0); ble_lay.setSpacing(6)
++        self._ble_combo = QComboBox(); self._ble_combo.setMinimumWidth(240)
+         self._ble_scan_btn = QPushButton("扫描")
+         self._ble_scan_btn.clicked.connect(self.scan_ble)
+         ble_lay.addWidget(self._ble_combo, 1); ble_lay.addWidget(self._ble_scan_btn)
+@@ -60,15 +109,36 @@ class ConnectionSelector(QWidget):
+         self._stack.addWidget(self._port)      # index 0 = serial
+         self._stack.addWidget(ble_page)        # index 1 = ble
+ 
+-        # 根布局单行横排：[○串口 ○蓝牙] [下拉+扫描/刷新]，塞进 36px 顶栏
+-        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(8)
++        # 连接/断开按钮 + 绿色状态点
++        self._connect_btn = QPushButton("连接")
++        self._connect_btn.clicked.connect(self.toggle_connection)
++        self._dot = QLabel("●")
++        self._dot.setToolTip("未连接")
++        self._update_dot(False)
++
++        # 根布局单行横排：[○串口 ○蓝牙] [下拉+扫描/刷新] [连接] [●]
++        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(10)
+         lay.addLayout(radios); lay.addWidget(self._stack, 1)
++        lay.addWidget(self._connect_btn); lay.addWidget(self._dot)
+ 
+         self._group.idToggled.connect(self._on_kind_toggled)
++        # 串口/蓝牙下拉选择变化时通知外部（用于更新下发按钮使能态）
++        self._port._combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
++        self._ble_combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
+ 
++    # ---- 外部注入 ----
++    def set_baud_getter(self, getter: "Callable[[], int]") -> None:
++        """串口建连需要波特率；由 MainWindow 注入 profile.baud。"""
++        self._baud_getter = getter
++
++    # ---- 模式切换 ----
+     def _on_kind_toggled(self, kind_id: int, checked: bool) -> None:
+         if checked:
+             self._stack.setCurrentIndex(kind_id)
++            # 切换连接方式时若已连接，先断开旧链路，避免目标与链路不一致
++            if self.is_connected():
++                self.disconnect()
++            self.target_changed.emit()
+ 
+     def set_kind(self, kind: str) -> None:
+         (self._rb_ble if kind == "ble" else self._rb_serial).setChecked(True)
+@@ -77,6 +147,7 @@ class ConnectionSelector(QWidget):
+     def selected_kind(self) -> str:
+         return "ble" if self._rb_ble.isChecked() else "serial"
+ 
++    # ---- 扫描 ----
+     def scan_ble(self) -> None:
+         """点扫描：后台线程跑阻塞扫描(~5s)，UI 不冻结；扫完在主线程填充下拉。
+         扫描期间禁用按钮 + 文本改「扫描中...」。重入直接忽略（线程仍在跑时）。"""
+@@ -109,12 +180,13 @@ class ConnectionSelector(QWidget):
+         self._ble_scan_btn.setEnabled(True)
+ 
+     def _populate_ble(self, devices) -> None:
+-        """把设备列表填进下拉；label 沿用现有格式，data=(address,name)。可被测试直接驱动。"""
++        """把设备列表填进下拉；只显示设备名（未命名回退到地址短码），data=(address,name)。"""
+         self._ble_combo.clear()
+         for d in devices:
+-            label = f"{d.name or '(未命名)'} [{d.address}] {d.rssi}dBm"
++            label = d.name or f"(未命名 {d.address[-5:]})"
+             self._ble_combo.addItem(label, (d.address, d.name))
+ 
++    # ---- 目标 ----
+     def selected_target(self) -> "str | None":
+         if self.selected_kind() == "serial":
+             return self._port.selected_port()
+@@ -127,7 +199,91 @@ class ConnectionSelector(QWidget):
+             return None
+         return self._ble_combo.currentData()[1]
+ 
++    # ---- 连接 / 断开 ----
++    def is_connected(self) -> bool:
++        return self._transport is not None
++
++    def persistent_transport(self):
++        """已连接时返回活链路供下发复用；未连接返回 None。"""
++        return self._transport
++
++    def toggle_connection(self) -> None:
++        if self.is_connected():
++            self.disconnect()
++        else:
++            self.connect()
++
++    def connect(self) -> None:
++        """建立并保持链路。建连阻塞（BLE 可数秒），放后台线程；期间禁用按钮。"""
++        if self.is_connected() or (self._conn_thread is not None and self._conn_thread.isRunning()):
++            return
++        target = self.selected_target()
++        if not target:
++            return
++        transport = self.make_transport()
++        self._connect_btn.setEnabled(False)
++        self._connect_btn.setText("连接中...")
++        self._set_inputs_enabled(False)
++        self._conn_thread = QThread()
++        self._conn_worker = _ConnectWorker(transport, target, int(self._baud_getter() or 0))
++        self._conn_worker.moveToThread(self._conn_thread)
++        self._conn_thread.started.connect(self._conn_worker.run)
++        # 用局部 transport 传回，避免竞态：done 时才落成 self._transport
++        self._conn_worker.done.connect(lambda t=transport: self._on_connect_done(t))
++        self._conn_worker.failed.connect(self._on_connect_failed)
++        self._conn_worker.done.connect(self._conn_thread.quit)
++        self._conn_worker.failed.connect(self._conn_thread.quit)
++        self._conn_thread.start()
++
++    @Slot()
++    def _on_connect_done(self, transport) -> None:
++        self._transport = transport
++        self._connect_btn.setText("断开")
++        self._connect_btn.setEnabled(True)
++        self._update_dot(True)
++        self.connection_changed.emit(True)
++
++    @Slot(str)
++    def _on_connect_failed(self, msg: str) -> None:
++        self._transport = None
++        self._connect_btn.setText("连接")
++        self._connect_btn.setEnabled(True)
++        self._set_inputs_enabled(True)
++        self._update_dot(False, error=True, msg=msg)
++
++    def disconnect(self) -> None:
++        if self._transport is not None:
++            try:
++                self._transport.close()
++            except Exception:
++                pass
++            self._transport = None
++        self._connect_btn.setText("连接")
++        self._connect_btn.setEnabled(True)
++        self._set_inputs_enabled(True)
++        self._update_dot(False)
++        self.connection_changed.emit(False)
++
++    def _set_inputs_enabled(self, enabled: bool) -> None:
++        """连接期间锁定模式切换与目标选择，避免链路与选择错位。"""
++        self._rb_serial.setEnabled(enabled)
++        self._rb_ble.setEnabled(enabled)
++        self._stack.setEnabled(enabled)
++
++    def _update_dot(self, connected: bool, error: bool = False, msg: str = "") -> None:
++        if connected:
++            color, tip = theme.SUCCESS, "已连接"
++        elif error:
++            color, tip = theme.ERROR, f"连接失败: {msg}" if msg else "连接失败"
++        else:
++            color, tip = theme.TEXT_DISABLED, "未连接"
++        self._dot.setStyleSheet(f"color: {color}; background: transparent; font-size: 14px;")
++        self._dot.setToolTip(tip)
++
+     def make_transport(self):
++        # 已连接时复用活链路，避免二次 open 抢占同一端口/BLE 链路
++        if self._transport is not None:
++            return self._transport
+         if self.selected_kind() == "serial":
+             return self._serial_factory()
+         return self._ble_factory(scanner=lambda timeout: self._ble_scan(timeout),
+diff --git a/src/lbs_firmware_studio/gui/widgets/port_selector.py b/src/lbs_firmware_studio/gui/widgets/port_selector.py
+index cf090cf..3abebe7 100644
+--- a/src/lbs_firmware_studio/gui/widgets/port_selector.py
++++ b/src/lbs_firmware_studio/gui/widgets/port_selector.py
+@@ -1,6 +1,10 @@
+-"""串口选择：下拉 + 刷新，自动识别 LBS Serial 设备置顶默认选中。"""
++"""串口选择：下拉 + 刷新，自动识别 LBS Serial 设备置顶默认选中。
++枚举串口在后台 QThread 执行，避免 com ports() 阻塞主线程（Windows 上某些坏端口
++可卡 40 秒+，导致窗口无响应被系统杀掉）。"""
+ from __future__ import annotations
++import sys
+ from typing import Callable
++from PySide6.QtCore import QObject, QThread, Signal, Slot
+ from PySide6.QtWidgets import QWidget, QHBoxLayout, QComboBox, QPushButton
+ 
+ _LBS_VID_PID = (0x0483, 0x5740)
+@@ -19,22 +23,95 @@ def _is_lbs(p) -> bool:
+     return (vid, pid) == _LBS_VID_PID
+ 
+ 
++class _PortScanWorker(QObject):
++    """把阻塞的 com ports() 丢到后台线程跑，扫完 emit ports 回主线程。"""
++    done = Signal(object)   # payload: list[comport]
++    failed = Signal(str)
++
++    def __init__(self, lister: Callable, parent=None):
++        super().__init__(parent)
++        self._lister = lister
++
++    @Slot()
++    def run(self) -> None:
++        try:
++            self.done.emit(list(self._lister()))
++        except Exception as e:
++            self.failed.emit(str(e))
++
++
+ class PortSelector(QWidget):
+     def __init__(self, lister: "Callable[[], list] | None" = None, parent=None):
+         super().__init__(parent)
+         self._lister = lister or _default_lister
++        self._scan_thread = None
++        self._scan_worker = None
+         self._combo = QComboBox()
+         self._refresh_btn = QPushButton("刷新")
+         self._refresh_btn.clicked.connect(self.refresh)
++        self._scan_started = False
+         lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)
+         lay.addWidget(self._combo, 1); lay.addWidget(self._refresh_btn)
+-        self.refresh()
+ 
++    def showEvent(self, event) -> None:
++        """首次显示时触发异步扫描，避免构造期 QThread 竞态。"""
++        super().showEvent(event)
++        if not self._scan_started:
++            self._scan_started = True
++            self._scan()
++
++    # ---- 异步扫描 ----
++    def _scan(self) -> None:
++        """后台线程跑 com ports()，期间下拉显示"扫描中..."；扫完在主线程填充。"""
++        if self._scan_thread is not None and self._scan_thread.isRunning():
++            return
++        # PortSelector 可能被快速创建/销毁（如 MonitorPage 测试），QTimer 回调时
++        # widget 可能已被父控件销毁，需检查 C++ 对象存活再操作。
++        try:
++            _ = self._combo.count()
++        except RuntimeError:
++            return  # C++ 对象已删除，放弃扫描
++        self._combo.clear()
++        self._combo.addItem("扫描中...", None)
++        self._refresh_btn.setEnabled(False)
++        self._scan_thread = QThread()
++        self._scan_worker = _PortScanWorker(self._lister)
++        self._scan_worker.moveToThread(self._scan_thread)
++        self._scan_thread.started.connect(self._scan_worker.run)
++        self._scan_worker.done.connect(self._on_scan_done)
++        self._scan_worker.failed.connect(self._on_scan_failed)
++        self._scan_worker.done.connect(self._scan_thread.quit)
++        self._scan_worker.failed.connect(self._scan_thread.quit)
++        self._scan_thread.start()
++
++    @Slot(object)
++    def _on_scan_done(self, ports) -> None:
++        try:
++            _ = self._combo.count()
++        except RuntimeError:
++            return  # C++ 对象已删除
++        self._populate(ports)
++        self._refresh_btn.setEnabled(True)
++
++    @Slot(str)
++    def _on_scan_failed(self, _msg: str) -> None:
++        try:
++            _ = self._combo.count()
++        except RuntimeError:
++            return  # C++ 对象已删除
++        self._combo.clear()
++        self._combo.addItem("(串口不可用)", None)
++        self._refresh_btn.setEnabled(True)
++
++    # ---- 同步刷新（供外部测试注入，不走 QThread） ----
+     def refresh(self) -> None:
+-        ports = list(self._lister())
+-        # LBS 设备排前
+-        ports.sort(key=lambda p: 0 if _is_lbs(p) else 1)
++        """用户点"刷新"：后台异步扫描。"""
++        self._scan()
++
++    def _populate(self, ports) -> None:
++        """把端口列表填进下拉（必须在主线程调用）。"""
+         self._combo.clear()
++        ports.sort(key=lambda p: 0 if _is_lbs(p) else 1)
+         lbs_index = -1
+         for i, p in enumerate(ports):
+             label = getattr(p, "description", None) or p.device
+@@ -44,7 +121,13 @@ class PortSelector(QWidget):
+         if lbs_index >= 0:
+             self._combo.setCurrentIndex(lbs_index)
+ 
++    # ---- 同步注入（测试用：绕过异步扫描，直接填数据） ----
++    def inject_ports(self, ports) -> None:
++        """测试直接注入端口列表，跳过异步扫描。"""
++        self._populate(ports)
++
+     def selected_port(self) -> "str | None":
+         if self._combo.count() == 0:
+             return None
+-        return self._combo.currentData()
++        data = self._combo.currentData()
++        return data if isinstance(data, str) else None
+\ No newline at end of file
+diff --git a/src/lbs_firmware_studio/gui/worker.py b/src/lbs_firmware_studio/gui/worker.py
+index 5e03d2c..f1dc9f4 100644
+--- a/src/lbs_firmware_studio/gui/worker.py
++++ b/src/lbs_firmware_studio/gui/worker.py
+@@ -21,7 +21,7 @@ from PySide6.QtCore import QObject, Signal, Slot
+ class DeployWorker(QObject):
+     finished = Signal()
+ 
+-    def __init__(self, transport, deployer, parent=None):
++    def __init__(self, transport, deployer, parent=None, owns_lifecycle: bool = True):
+         super().__init__(parent)
+         self._transport = transport
+         self._deployer = deployer
+@@ -29,6 +29,9 @@ class DeployWorker(QObject):
+         self._port = None
+         self._py_path = None
+         self._slot = 0
++        # owns_lifecycle=False：transport 是外部已连接的持久链路，本 worker 不 open/close，
++        # 仅武装 RX 与执行下发（复用活链路，避免二次 open 抢占同一端口/BLE 链路）。
++        self._owns_lifecycle = owns_lifecycle
+ 
+     def set_job(self, profile, port: str, py_path=None, slot: int = 0) -> None:
+         """预存本次任务参数。固件更新只需 profile/port；脚本下发另带 py_path/slot。"""
+@@ -41,7 +44,8 @@ class DeployWorker(QObject):
+     def run_firmware(self) -> None:
+         profile, port = self._profile, self._port
+         try:
+-            self._transport.open(port, profile.baud)
++            if self._owns_lifecycle:
++                self._transport.open(port, profile.baud)
+             self._transport.start_rx()
+             self._deployer.update_firmware(profile, port)
+         except Exception as e:
+@@ -55,7 +59,8 @@ class DeployWorker(QObject):
+                 pass
+         finally:
+             try:
+-                self._transport.close()
++                if self._owns_lifecycle:
++                    self._transport.close()
+             except Exception:
+                 pass
+             self.finished.emit()
+@@ -65,7 +70,8 @@ class DeployWorker(QObject):
+         profile, port = self._profile, self._port
+         opened = False
+         try:
+-            self._transport.open(port, profile.baud)
++            if self._owns_lifecycle:
++                self._transport.open(port, profile.baud)
+             self._transport.start_rx()
+             opened = True
+             self._deployer.deploy_script(profile, port, self._py_path, self._slot)
+@@ -80,7 +86,8 @@ class DeployWorker(QObject):
+                     pass
+         finally:
+             try:
+-                self._transport.close()
++                if self._owns_lifecycle:
++                    self._transport.close()
+             except Exception:
+                 pass
+             self.finished.emit()
+diff --git a/tests/gui/test_connection_selector.py b/tests/gui/test_connection_selector.py
+index 4c4c9d2..46a219b 100644
+--- a/tests/gui/test_connection_selector.py
++++ b/tests/gui/test_connection_selector.py
+@@ -17,6 +17,8 @@ class _FakePort:
+ def test_default_kind_serial_and_target(app):
+     cs = ConnectionSelector(port_lister=lambda: [_FakePort("COM3", "LBS Serial")],
+                             ble_scan=lambda timeout=5.0: [])
++    # 串口枚举已异步化，测试用同步注入
++    cs._port.inject_ports([_FakePort("COM3", "LBS Serial")])
+     assert cs.selected_kind() == "serial"
+     assert cs.selected_target() == "COM3"
+     assert cs.selected_name() is None
+@@ -26,6 +28,7 @@ def test_switch_to_ble_lists_devices_and_target(app, qtbot):
+     cs = ConnectionSelector(
+         port_lister=lambda: [],
+         ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
++    cs._port.inject_ports([])
+     cs.set_kind("ble")
+     cs.scan_ble()                        # 触发后台扫描
+     qtbot.waitUntil(lambda: cs._ble_combo.count() > 0, timeout=2000)  # 等后台填充完成
+@@ -39,6 +42,7 @@ def test_make_transport_by_kind(app, qtbot):
+     from lbs_firmware_studio.backend.ble_transport import BleTransport
+     cs = ConnectionSelector(port_lister=lambda: [_FakePort("COM3", "x")],
+                             ble_scan=lambda timeout=5.0: [BleDevice("ECB02", "AA:BB", -40)])
++    cs._port.inject_ports([_FakePort("COM3", "x")])
+     assert isinstance(cs.make_transport(), SerialTransport)
+     cs.set_kind("ble"); cs.scan_ble()
+     qtbot.waitUntil(lambda: cs._ble_combo.count() > 0, timeout=2000)  # 等后台填充完成
+diff --git a/tests/gui/test_monitor_worker.py b/tests/gui/test_monitor_worker.py
+index 8594470..110748f 100644
+--- a/tests/gui/test_monitor_worker.py
++++ b/tests/gui/test_monitor_worker.py
+@@ -44,3 +44,23 @@ def test_start_emits_connected(qtbot):
+     assert "connected" in states
+     w.stop()
+     assert "disconnected" in states
++
++
++def test_start_on_reuses_persistent_link_without_closing(qtbot):
++    """start_on 复用外部已连接链路：不 open、不 close，仅挂/摘 data_handler。"""
++    dev, host = make_fake_serial_pair()
++    transport = SerialTransport(serial_obj=host)
++    transport.open("COMX", 115200)      # 外部（顶栏）已建连
++    w = MonitorWorker()
++    states = []
++    w.state_changed.connect(lambda s: states.append(s))
++    w.start_on(transport)
++    assert "connected" in states
++    assert transport.is_open            # 复用，未被关闭
++    got = []
++    w.frame_parsed.connect(lambda d: got.append(d))
++    dev.write(b'{"version": 42}\r\n')
++    qtbot.waitUntil(lambda: got == [{"version": 42}], timeout=1000)
++    w.stop()
++    assert "disconnected" in states
++    assert transport.is_open            # stop 归还链路，不断开
+diff --git a/tests/gui/test_port_selector.py b/tests/gui/test_port_selector.py
+index 9b85084..709b19a 100644
+--- a/tests/gui/test_port_selector.py
++++ b/tests/gui/test_port_selector.py
+@@ -14,24 +14,28 @@ def test_lbs_device_auto_selected(qtbot):
+         _FakePort("COM5", "Standard Serial"),
+     ]
+     w = PortSelector(lister=lambda: ports); qtbot.addWidget(w)
++    w.inject_ports(ports)  # 同步注入（异步扫描仅用于生产，测试不走后台线程）
+     assert w.selected_port() == "COM9"
+ 
+ 
+ def test_no_lbs_device_none_selected(qtbot):
+     ports = [_FakePort("COM3", "USB-SERIAL CH340")]
+     w = PortSelector(lister=lambda: ports); qtbot.addWidget(w)
+-    # 无 LBS 设备：仍列出端口，但不强制选中 LBS（selected_port 返回第一个或 None 由实现定）
+-    assert w.selected_port() in ("COM3", None)
++    w.inject_ports(ports)
++    assert w.selected_port() == "COM3"
+ 
+ 
+ def test_refresh_updates_list(qtbot):
+     state = {"ports": [_FakePort("COM3", "CH340")]}
+     w = PortSelector(lister=lambda: state["ports"]); qtbot.addWidget(w)
++    w.inject_ports(state["ports"])
+     state["ports"] = [_FakePort("COM9", "LBS Serial (COM9)", vid=0x0483, pid=0x5740)]
+     w.refresh()
++    qtbot.waitUntil(lambda: w.selected_port() == "COM9", timeout=2000)
+     assert w.selected_port() == "COM9"
+ 
+ 
+ def test_empty_ports(qtbot):
+     w = PortSelector(lister=lambda: []); qtbot.addWidget(w)
+-    assert w.selected_port() is None
++    w.inject_ports([])
++    assert w.selected_port() is None
+\ No newline at end of file
+diff --git a/tests/test_ble_transport.py b/tests/test_ble_transport.py
+index 1cf1cff..6ac516a 100644
+--- a/tests/test_ble_transport.py
++++ b/tests/test_ble_transport.py
+@@ -29,9 +29,20 @@ from lbs_firmware_studio.backend.ble_transport import BleTransport, _find_transp
+ 
+ def test_find_transparent_chars_picks_notify_and_write():
+     pairs = [("aaa", ["read"]), ("bbb", ["notify"]), ("ccc", ["write-without-response"])]
+-    notify, write = _find_transparent_chars(pairs)
++    notify, write, write_response = _find_transparent_chars(pairs)
+     assert notify == "bbb"
+     assert write == "ccc"
++    assert write_response is False   # 仅 write-without-response -> 不用带响应写
++
++
++def test_find_transparent_chars_prefers_response_write_when_supported():
++    # 真机 ECB02：写特征值 fff2 支持 write/write-without-response -> 选带响应写做背压
++    pairs = [("fff2", ["write", "write-without-response"]),
++             ("fff1", ["notify", "write", "write-without-response", "read"])]
++    notify, write, write_response = _find_transparent_chars(pairs)
++    assert notify == "fff1"
++    assert write == "fff2"
++    assert write_response is True
+ 
+ 
+ def test_find_transparent_chars_raises_when_missing():
+diff --git a/tests/test_deployer.py b/tests/test_deployer.py
+index e15b323..cdf6314 100644
+--- a/tests/test_deployer.py
++++ b/tests/test_deployer.py
+@@ -100,3 +100,19 @@ def test_update_firmware_ymodem():
+             assert reopened == ["COM_FAKE"]
+     finally:
+         t.stop_rx(); sim.stop()
++
++
++class _FakeLink:
++    """最小 transport 桩：只提供 link_kind，供 _make_protocol 选块大小。"""
++    def __init__(self, kind):
++        self.link_kind = kind
++
++
++def test_ymodem_block_size_128_over_ble_1024_over_serial():
++    """蓝牙 YMODEM 用 128B 块(ECB02 透传单帧≤248B)，串口沿用 profile.chunk_size(1024)。
++    真机根因：1024 块经蓝牙拆多片致设备缓冲溢出→NAK。对齐 pika_deploy.py BT_YMODEM_BLOCK。"""
++    prof = _profile("NEXT-AI", "ymodem")   # chunk_size=1024
++    ble_proto = DeviceDeployer(transport=_FakeLink("ble"))._make_protocol(prof)
++    assert ble_proto.block_size == 128
++    ser_proto = DeviceDeployer(transport=_FakeLink("serial"))._make_protocol(prof)
++    assert ser_proto.block_size == 1024

@@ -11,6 +11,8 @@ except ImportError:  # 测试环境用 FakeSerial，pyserial 可能未装
 
 
 class SerialTransport:
+    link_kind = "serial"   # 供 deployer 区分链路(与 BleTransport.link_kind 对等)
+
     def __init__(self, serial_obj=None, reopen_factory: "Callable[[str, int], object] | None" = None,
                  port_lister: "Callable[[], set[str]] | None" = None):
         self._serial = serial_obj

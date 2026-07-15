@@ -3,9 +3,11 @@
 使协议层 read_byte 拉取逻辑零改动。"""
 from __future__ import annotations
 import asyncio
+import os
 import queue
 import threading
 import time
+from pathlib import Path
 from typing import Callable
 
 try:
@@ -14,17 +16,46 @@ except ImportError:  # 未安装 bleak：串口功能不受影响，选蓝牙时
     BleakClient = None
 
 
-def _find_transparent_chars(pairs) -> tuple[str, str]:
-    """从 [(uuid, properties)] 里挑一个 notify(收) + 一个 write(发) 特征值。"""
+# ---- 诊断日志（排障用）：默认关闭，环境变量 LBS_BLE_DEBUG=1 开启 ----
+# 纯旁路记录，绝不影响任何收发逻辑。
+# 模块加载时缓存开关状态 + 日志路径，避免每次热路径调用都读环境变量 / Path.home()。
+_BLE_DEBUG_ENABLED = bool(os.environ.get("LBS_BLE_DEBUG"))
+_BLE_LOG_PATH = Path.home() / "ble_debug.log"
+
+
+def _ble_log(msg: str) -> None:
+    if not _BLE_DEBUG_ENABLED:
+        return
+    try:
+        line = f"[{time.strftime('%H:%M:%S')}] {msg}\n"
+        with open(_BLE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass  # 诊断日志绝不能反过来影响主流程
+
+
+def _hex_preview(data: bytes, limit: int = 32) -> str:
+    head = data[:limit]
+    tail = "..." if len(data) > limit else ""
+    return head.hex(" ") + tail
+
+
+def _find_transparent_chars(pairs) -> tuple[str, str, bool]:
+    """从 [(uuid, properties)] 里挑一个 notify(收) + 一个 write(发) 特征值。
+    第三个返回值 write_response：所选写特征值是否支持带响应写(write)。
+    带响应写会逐片等设备 BLE 层确认，形成天然背压，避免多分片背靠背连发时
+    设备侧透传缓冲溢出丢字节（真机 YMODEM 1024B 数据块经蓝牙被 NAK 的根因）。"""
     notify_uuid = write_uuid = None
+    write_response = False
     for uuid, props in pairs:
         if notify_uuid is None and ("notify" in props or "indicate" in props):
             notify_uuid = uuid
         if write_uuid is None and ("write" in props or "write-without-response" in props):
             write_uuid = uuid
+            write_response = "write" in props   # 支持带响应写则优先用它做流控
     if notify_uuid is None or write_uuid is None:
         raise RuntimeError("未发现可透传特征值")
-    return notify_uuid, write_uuid
+    return notify_uuid, write_uuid, write_response
 
 
 class _RealBleakClient:
@@ -70,6 +101,8 @@ def _default_client_factory(address: str):
 
 
 class BleTransport:
+    link_kind = "ble"   # 供 deployer 区分链路：蓝牙 YMODEM 须用 128B 块(见 deployer._make_protocol)
+
     def __init__(self, client_factory: "Callable[[str], object] | None" = None,
                  scanner: "Callable[[float], list] | None" = None,
                  reconnect_name: "str | None" = None):
@@ -84,6 +117,7 @@ class BleTransport:
         self._data_handler: Callable[[bytes], None] | None = None
         self._notify_uuid: str | None = None
         self._write_uuid: str | None = None
+        self._write_response = False   # 写特征值是否支持带响应写(逐片确认，做背压)
         self._mtu = 20
         self._connected = False
 
@@ -110,12 +144,18 @@ class BleTransport:
         # 连上后的就绪步骤任一失败都属"半开链路"：先断开(吞异常)再上抛，
         # 避免残留 BLE 链路占用设备导致后续重连持续失败。
         try:
-            self._notify_uuid, self._write_uuid = _find_transparent_chars(
-                self._client.get_characteristics())
+            chars = self._client.get_characteristics()
+            _ble_log(f"connect {self._address}; 特征值清单: " +
+                     "; ".join(f"{u}={p}" for u, p in chars))
+            self._notify_uuid, self._write_uuid, self._write_response = _find_transparent_chars(chars)
             self._mtu = max(int(getattr(self._client, "mtu_size", 23)) - 3, 20)
+            _ble_log(f"选中 notify={self._notify_uuid} write={self._write_uuid} "
+                     f"mtu_size={getattr(self._client, 'mtu_size', 23)} 分片={self._mtu} "
+                     f"带响应写={self._write_response}")
             await self._client.start_notify(self._notify_uuid, self._on_notify)
             self._connected = True
-        except Exception:
+        except Exception as e:
+            _ble_log(f"连接就绪失败: {e!r}")
             try:
                 await self._client.disconnect()
             except Exception:
@@ -124,6 +164,9 @@ class BleTransport:
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
+        if _BLE_DEBUG_ENABLED:
+            _ble_log(f"notify recv {len(b)}B mode={'handler' if self._data_handler else 'queue'} "
+                     f"hex={_hex_preview(b)}")
         if self._data_handler is not None:
             self._data_handler(b)
         else:
@@ -162,14 +205,23 @@ class BleTransport:
     def write(self, data: bytes) -> int:
         if not self._connected:
             raise RuntimeError("ble not connected")
-        self._run(self._write(bytes(data)))
+        data = bytes(data)
+        if _BLE_DEBUG_ENABLED:
+            _ble_log(f"write {len(data)}B -> {self._write_uuid} hex={_hex_preview(data)}")
+        try:
+            self._run(self._write(data))
+        except Exception as e:
+            _ble_log(f"write 失败: {e!r}")
+            raise
         return len(data)
 
     async def _write(self, data: bytes) -> None:
-        # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）
+        # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）。
+        # 带响应写(response=True)逐片等设备 BLE 层确认，形成背压，避免多分片背靠背
+        # 连发时设备侧透传缓冲溢出丢字节；仅在写特征值支持 'write' 时启用。
         for i in range(0, len(data), self._mtu):
             await self._client.write_gatt_char(
-                self._write_uuid, data[i:i + self._mtu], response=False)
+                self._write_uuid, data[i:i + self._mtu], response=self._write_response)
 
     def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
                         post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:

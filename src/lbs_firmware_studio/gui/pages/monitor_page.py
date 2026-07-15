@@ -22,6 +22,7 @@ class MonitorPage(QWidget):
         self._cards: dict[int, SensorCard] = {}
         self._latest: dict | None = None
         self._monitoring = False
+        self._transport_getter = lambda: None   # 由 MainWindow 注入：取顶栏已连接的持久链路
 
         self._worker = MonitorWorker()
         self._worker.frame_parsed.connect(self._on_frame)
@@ -36,8 +37,12 @@ class MonitorPage(QWidget):
         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
         self._update_btn.clicked.connect(self._open_sensor_update)
         self._update_btn.setEnabled(False)     # 需监控中才能下发
+        self._conn_hint = QLabel("")           # 顶栏已连接时提示走哪条链路
+        self._conn_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
         top = QHBoxLayout()
-        top.addWidget(QLabel("串口:")); top.addWidget(self._port, 1)
+        self._port_lbl = QLabel("串口:")
+        top.addWidget(self._port_lbl); top.addWidget(self._port, 1)
+        top.addWidget(self._conn_hint, 1)
         top.addWidget(self._start_btn); top.addWidget(self._update_btn)
 
         # 卡片区（两列）
@@ -67,6 +72,22 @@ class MonitorPage(QWidget):
     def set_profile(self, profile) -> None:
         self._profile = profile
         self._rebuild_cards()
+
+    def set_transport_getter(self, getter) -> None:
+        """注入取顶栏持久链路的回调。返回非 None 时监控复用该链路（串口/蓝牙皆可）。"""
+        self._transport_getter = getter
+        self._sync_conn_ui()
+
+    def _sync_conn_ui(self) -> None:
+        """按顶栏是否已连接，切换「本地串口选择」与「复用顶栏连接」两种入口的可见性。"""
+        connected = self._transport_getter() is not None
+        # 已连接：隐藏本页串口下拉，改提示复用顶栏链路
+        self._port_lbl.setVisible(not connected)
+        self._port.setVisible(not connected)
+        self._conn_hint.setVisible(connected)
+        if connected:
+            self._conn_hint.setText("● 使用顶栏连接")
+            self._conn_hint.setStyleSheet(f"color:{theme.SUCCESS}; background:transparent;")
 
     def _rebuild_cards(self) -> None:
         # 清空旧卡片
@@ -104,9 +125,14 @@ class MonitorPage(QWidget):
             self.start_monitor()
 
     def start_monitor(self) -> None:
+        # 优先复用顶栏已连接的持久链路（串口或蓝牙）；否则回退到本页串口选择
+        transport = self._transport_getter()
+        if transport is not None:
+            self._worker.start_on(transport)
+            return
         port = self._port.selected_port()
         if not port:
-            QMessageBox.warning(self, "提示", "未选择串口"); return
+            QMessageBox.warning(self, "提示", "未选择串口，或先在顶栏连接设备"); return
         baud = getattr(self._profile, "baud", 115200)
         self._worker.start(port, baud)
 
