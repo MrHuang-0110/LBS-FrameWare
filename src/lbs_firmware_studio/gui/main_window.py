@@ -16,6 +16,7 @@ from .pages.placeholder_page import PlaceholderPage
 from .pages.monitor_page import MonitorPage
 from .worker import DeployWorker
 from ..backend.deployer import DeviceDeployer
+from ..backend import protocol_frame as pf
 
 # (key, 中文标签, icon, enabled)
 _NAV = [
@@ -87,6 +88,10 @@ class MainWindow(QWidget):
         self._editor_page.set_port_getter(self._conn.selected_target)
         self._conn.set_baud_getter(lambda: getattr(self._profile, "baud", 0))
         self._editor_page.deploy_requested.connect(self._start_script)
+        # 监控运行状态 → 编辑页按钮状态
+        self._monitor.host_state_changed.connect(self._editor_page.on_host_state_changed)
+        # 编辑页运行/暂停按钮 → 发 0xB6 命令
+        self._editor_page.run_toggle_requested.connect(self._on_run_toggle)
         # 顶栏连接状态变化时刷新监控页入口（连上=复用该链路，断开=退回本页串口选择）
         self._conn.connection_changed.connect(self._on_connection_changed)
         # 串口/蓝牙设备选择变化时更新下发按钮使能态（未选目标时禁用）
@@ -110,8 +115,8 @@ class MainWindow(QWidget):
         return PlaceholderPage(_KEY2LABEL[key])
 
     def _on_nav(self, key: str):
-        # 离开监控页时停监控，释放串口
-        if key != "monitor" and self._pages.get("monitor") is self._stack.currentWidget():
+        # 离开监控页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
+        if key != "monitor" and key != "editor" and self._pages.get("monitor") is self._stack.currentWidget():
             self._monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
 
@@ -125,6 +130,16 @@ class MainWindow(QWidget):
         monitor.set_transport_getter(self._conn.persistent_transport)
         self._update_deploy_buttons()
 
+    def _on_run_toggle(self):
+        """发送运行/暂停切换命令 (0xB6) 到设备。"""
+        transport = self._conn.persistent_transport()
+        if transport is None:
+            return
+        try:
+            transport.write(pf.build_frame(pf.CMD_RUN_TOGGLE, b"\x01"))
+        except Exception:
+            pass  # 静默失败，等下一帧监控数据修正按钮状态
+
     def _update_deploy_buttons(self) -> None:
         """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
         未选串口/蓝牙设备时固件更新和脚本下发按钮均禁用，避免点了弹警告。"""
@@ -132,6 +147,10 @@ class MainWindow(QWidget):
         can_firmware = has_target and not self._ble_firmware_blocked()
         self._firmware._start.setEnabled(can_firmware and not self._busy)
         self._editor_page._deploy_btn.setEnabled(has_target and not self._busy)
+        # 运行/暂停按钮仅在连接目标存在时启用初始态（实际状态由监控驱动）
+        can_run = has_target and not self._busy
+        self._editor_page._run_btn.setEnabled(can_run)
+        self._editor_page._pause_btn.setEnabled(False)  # 初始未知状态，暂停禁用
 
     # ---- 固件更新流程（沿用已修复版本）----
     def _ble_firmware_blocked(self) -> bool:
