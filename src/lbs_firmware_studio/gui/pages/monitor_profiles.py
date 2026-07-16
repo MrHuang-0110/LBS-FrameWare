@@ -50,3 +50,14 @@ def get_by_path(data: dict, path: str):
 
 def sensor_display_name(key: str) -> str:
     return SENSOR_NAMES.get(key, key)
+
+
+def get_host_state_path(product_name: str) -> "str | None":
+    """返回产品监控配置中"运行状态"字段的 JSON 路径，无配置返回 None。"""
+    prof = MONITOR_PROFILES.get(product_name)
+    if prof is None:
+        return None
+    for label, path in prof["status_fields"]:
+        if label == "运行状态":
+            return path
+    return None
