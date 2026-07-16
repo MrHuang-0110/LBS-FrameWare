@@ -75,6 +75,8 @@ class ScriptEditorPage(QWidget):
                 f"QPushButton#floatbtn:pressed {{ background: {theme.BG_SELECTED}; }}")
         self._running = False
         self._busy = False
+        self._has_target = False
+        self._monitoring_active = False
         self._editor.installEventFilter(self)
 
         # 底部：进度 + 日志（日志固定矮条，编辑器占绝大部分空间）
@@ -267,25 +269,28 @@ class ScriptEditorPage(QWidget):
         self._open_btn.setEnabled(not busy)
         self._slot_btn.setEnabled(not busy)
         self._tpl_combo.setEnabled(not busy)
-        if busy:
-            self._run_btn.setEnabled(False)
-            self._pause_btn.setEnabled(False)
-        else:
-            self._apply_run_state()
+        self._apply_run_state()
 
     def on_host_state_changed(self, state: str) -> None:
         """接收监控帧确认的运行状态，以帧值为准。"""
         if state == "start":
             self._running = True
+            self._monitoring_active = True
         elif state == "stop":
             self._running = False
+            self._monitoring_active = True
         else:
-            self._running = False   # 未知/空 → 禁用两按钮
+            self._running = False       # 未知/空 → 等同 stop 态
+            self._monitoring_active = False
+        self._apply_run_state()
+
+    def set_has_target(self, has_target: bool) -> None:
+        self._has_target = has_target
         self._apply_run_state()
 
     def _apply_run_state(self) -> None:
-        """根据 _running 和 _busy 更新运行/暂停按钮启用态。"""
-        if self._busy:
+        """根据 _has_target / _busy / _monitoring_active / _running 更新按钮启用态。"""
+        if not self._has_target or self._busy or not self._monitoring_active:
             self._run_btn.setEnabled(False)
             self._pause_btn.setEnabled(False)
         elif self._running:

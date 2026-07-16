@@ -209,6 +209,7 @@ def test_on_host_state_changed_start_enables_pause_disables_run(qtbot, tmp_path)
     """监控状态 start → 运行禁用、暂停启用。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("start")
     assert page._run_btn.isEnabled() is False
     assert page._pause_btn.isEnabled() is True
@@ -218,19 +219,20 @@ def test_on_host_state_changed_stop_enables_run_disables_pause(qtbot, tmp_path):
     """监控状态 stop → 运行启用、暂停禁用。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("stop")
     assert page._run_btn.isEnabled() is True
     assert page._pause_btn.isEnabled() is False
 
 
 def test_on_host_state_changed_empty_disables_both(qtbot, tmp_path):
-    """监控状态 "" → 视为未知状态，运行按钮仍启用（与 stop 一致）。"""
+    """监控状态 "" → 监控未运行，两按钮均禁用。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("stop")   # 先设一个有效状态
-    page.on_host_state_changed("")        # 再清空
-    # 空字符串走 else 分支，_running = False，等同 stop 态
-    assert page._run_btn.isEnabled() is True
+    page.on_host_state_changed("")        # 再清空 → 监控停止
+    assert page._run_btn.isEnabled() is False
     assert page._pause_btn.isEnabled() is False
 
 
@@ -238,6 +240,7 @@ def test_run_button_click_emits_run_toggle(qtbot, tmp_path):
     """点击运行按钮 emit run_toggle_requested 信号，并乐观切换状态。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("stop")   # 初始：已暂停
     fired = []
     page.run_toggle_requested.connect(lambda: fired.append(True))
@@ -252,6 +255,7 @@ def test_pause_button_click_emits_run_toggle(qtbot, tmp_path):
     """点击暂停按钮 emit run_toggle_requested 信号，并乐观切换状态。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("start")  # 初始：运行中
     fired = []
     page.run_toggle_requested.connect(lambda: fired.append(True))
@@ -266,6 +270,7 @@ def test_set_busy_disables_run_pause_buttons(qtbot, tmp_path):
     """下发忙碌时运行/暂停按钮均禁用。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("stop")   # 运行按钮应启用
     assert page._run_btn.isEnabled() is True
     page.set_busy(True)
@@ -279,6 +284,7 @@ def test_set_busy_false_restores_run_state(qtbot, tmp_path):
     """忙碌结束后恢复为运行状态对应的按钮启用态。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
+    page.set_has_target(True)
     page.on_host_state_changed("start")  # 运行中
     page.set_busy(True)
     assert page._run_btn.isEnabled() is False

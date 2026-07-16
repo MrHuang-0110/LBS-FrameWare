@@ -89,11 +89,16 @@ def test_run_pause_buttons_disabled_without_target(qtbot, tmp_path):
 
 
 def test_run_pause_buttons_enabled_after_port_selected(qtbot, tmp_path):
-    """选中串口后运行/暂停按钮初始启用（暂停按钮因未知状态仍禁用）。"""
+    """选中串口后运行/暂停按钮仍需监控帧驱动，初始均禁用。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
-    # 暂停按钮初始禁用（未知状态）
+    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
+    # 有连接目标但无监控：两按钮均禁用
+    assert not w._editor_page._run_btn.isEnabled()
+    assert not w._editor_page._pause_btn.isEnabled()
+    # 模拟监控启动：状态帧到达后按钮按运行状态启用
+    w._monitor.host_state_changed.emit("stop")
+    assert w._editor_page._run_btn.isEnabled()
     assert not w._editor_page._pause_btn.isEnabled()
 
 
@@ -101,12 +106,12 @@ def test_run_toggle_sends_0xb6_frame(qtbot, tmp_path, monkeypatch):
     """点击运行按钮后 MainWindow 发送正确的 0xB6 帧。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
+    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
     # 注入假 transport
     fake = _FakeTransport()
     monkeypatch.setattr(w._conn, "persistent_transport", lambda: fake)
-    # 让编辑页处于"已暂停"状态以确保运行按钮可用
-    w._editor_page.on_host_state_changed("stop")
+    # 模拟监控运行中：设备处于"已暂停"状态，运行按钮可用
+    w._monitor.host_state_changed.emit("stop")
     w._editor_page._run_btn.click()
     assert len(fake.written) == 1
     expected = pf.build_frame(pf.CMD_RUN_TOGGLE, b"\x01")
@@ -117,9 +122,9 @@ def test_run_toggle_no_transport_silent(qtbot, tmp_path, monkeypatch):
     """无持久链路时点击运行按钮静默返回，不崩溃。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
+    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
     monkeypatch.setattr(w._conn, "persistent_transport", lambda: None)
-    w._editor_page.on_host_state_changed("stop")
+    w._monitor.host_state_changed.emit("stop")
     # 不应崩溃
     w._editor_page._run_btn.click()
 
@@ -128,7 +133,7 @@ def test_host_state_signal_forwarded_to_editor(qtbot, tmp_path):
     """MonitorPage.host_state_changed 信号正确转发到 ScriptEditorPage。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
+    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
     # 直接 emit 监控页信号
     w._monitor.host_state_changed.emit("start")
     assert w._editor_page._run_btn.isEnabled() is False

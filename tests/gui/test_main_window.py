@@ -112,6 +112,7 @@ def test_navigate_to_monitor_page(qtbot, tmp_path):
 def test_leaving_monitor_stops_it(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w.navigate("数据监控")
+    w._monitor._monitoring = True  # 模拟监控正在运行
     stopped = []
     w._monitor.stop_monitor = lambda: stopped.append(True)  # 打桩
     w.navigate("固件更新")     # 离开监控页

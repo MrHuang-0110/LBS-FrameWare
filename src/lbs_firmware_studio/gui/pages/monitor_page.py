@@ -10,7 +10,7 @@ from ..widgets.port_selector import PortSelector
 from ..widgets.sensor_card import SensorCard
 from ..widgets.host_status_bar import HostStatusBar
 from ..monitor_worker import MonitorWorker
-from .monitor_profiles import MONITOR_PROFILES
+from .monitor_profiles import MONITOR_PROFILES, get_host_state_path, get_by_path
 
 _RENDER_INTERVAL_MS = 100
 
@@ -143,6 +143,9 @@ class MonitorPage(QWidget):
         self._timer.stop()
         self._worker.stop()
 
+    def is_monitoring(self) -> bool:
+        return self._monitoring
+
     def _on_worker_state(self, state: str) -> None:
         self._monitoring = (state == "connected")
         if not self._monitoring:
@@ -194,7 +197,6 @@ class MonitorPage(QWidget):
 
     def _emit_host_state(self, frame: dict) -> None:
         """从帧中提取运行状态，变化时 emit host_state_changed。"""
-        from .monitor_profiles import get_host_state_path, get_by_path
         name = getattr(self._profile, "name", None) if self._profile else None
         if name is None:
             return

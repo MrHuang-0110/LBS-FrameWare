@@ -116,7 +116,7 @@ class MainWindow(QWidget):
 
     def _on_nav(self, key: str):
         # 离开监控页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
-        if key != "monitor" and key != "editor" and self._pages.get("monitor") is self._stack.currentWidget():
+        if key != "monitor" and key != "editor" and self._monitor.is_monitoring():
             self._monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
 
@@ -135,10 +135,12 @@ class MainWindow(QWidget):
         transport = self._conn.persistent_transport()
         if transport is None:
             return
+        if self._busy:
+            return
         try:
             transport.write(pf.build_frame(pf.CMD_RUN_TOGGLE, b"\x01"))
-        except Exception:
-            pass  # 静默失败，等下一帧监控数据修正按钮状态
+        except OSError:
+            pass  # 传输层写失败，等下一帧监控数据修正按钮状态
 
     def _update_deploy_buttons(self) -> None:
         """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
@@ -147,10 +149,8 @@ class MainWindow(QWidget):
         can_firmware = has_target and not self._ble_firmware_blocked()
         self._firmware._start.setEnabled(can_firmware and not self._busy)
         self._editor_page._deploy_btn.setEnabled(has_target and not self._busy)
-        # 运行/暂停按钮仅在连接目标存在时启用初始态（实际状态由监控驱动）
-        can_run = has_target and not self._busy
-        self._editor_page._run_btn.setEnabled(can_run)
-        self._editor_page._pause_btn.setEnabled(False)  # 初始未知状态，暂停禁用
+        # 运行/暂停按钮：委托 _apply_run_state() 统一管理，避免多源覆盖
+        self._editor_page.set_has_target(has_target and not self._busy)
 
     # ---- 固件更新流程（沿用已修复版本）----
     def _ble_firmware_blocked(self) -> bool:
@@ -175,10 +175,13 @@ class MainWindow(QWidget):
         port = self._conn.selected_target()
         if not port:
             QMessageBox.warning(self, "提示", "未选择连接目标"); return
+        # 复用持久链路时先停监控，避免 data_handler 抢占串口字节导致下发协议超时
+        persistent = self._conn.persistent_transport()
+        if persistent is not None and self._monitor.is_monitoring():
+            self._monitor.stop_monitor()
         self._busy = True
         page.set_busy(True)
         # 已手动建连则复用活链路（worker 不再 open/close）；否则沿用一次性建连
-        persistent = self._conn.persistent_transport()
         if persistent is not None:
             self._transport = persistent
             owns_lifecycle = False
