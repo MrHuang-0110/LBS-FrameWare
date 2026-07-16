@@ -139,3 +139,25 @@ def test_host_state_changed_unknown_product_no_emit(qtbot):
     p._on_frame({"version": 1})
     p._render()
     assert states == []
+
+
+def test_host_state_changed_spark_ai_uses_will_ai_state(qtbot):
+    """SPARK-AI 用 WillAiState 路径提取运行状态。"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("SPARK-AI"))
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    p._on_frame({"WillAiState": "start"})
+    p._render()
+    assert states == ["start"]
+
+
+def test_host_state_changed_next_ai_uses_state(qtbot):
+    """NEXT-AI 用 State 路径提取运行状态。"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("NEXT-AI"))
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    p._on_frame({"State": "stop"})
+    p._render()
+    assert states == ["stop"]
