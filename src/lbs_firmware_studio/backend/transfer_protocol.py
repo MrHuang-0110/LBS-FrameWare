@@ -59,7 +59,7 @@ class CustomFrameProtocol(TransferProtocol):
         while sent < total:
             chunk = data[sent:sent + self.chunk_size]
             is_last = sent + len(chunk) >= total
-            c = pf.CMD_FILE_END  # SPARK-AI BLE 不支持 CMD_FILE_DATA(0xAA)，全部用 CMD_FILE_END
+            c = pf.CMD_FILE_END if is_last else pf.CMD_FILE_DATA
             self._send_and_wait(t, pf.build_frame(c, chunk), is_last=is_last,
                                 label=f"{path.name}:chunk{chunk_idx} last={is_last}")
             sent += len(chunk)

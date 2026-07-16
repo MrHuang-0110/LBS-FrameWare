@@ -164,6 +164,7 @@ class BleTransport:
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
+        print(f"[DEBUG] notify recv: {len(b)}B hex={_hex_preview(b)}")
         if _BLE_DEBUG_ENABLED:
             _ble_log(f"notify recv {len(b)}B mode={'handler' if self._data_handler else 'queue'} "
                      f"hex={_hex_preview(b)}")
