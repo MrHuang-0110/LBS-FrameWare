@@ -177,3 +177,111 @@ def test_set_busy_disables_open(qtbot, tmp_path):
     assert page._open_btn.isEnabled() is False
     page.set_busy(False)
     assert page._open_btn.isEnabled() is True
+
+
+def test_run_pause_buttons_exist(qtbot, tmp_path):
+    """运行和暂停按钮在页面创建后存在。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert hasattr(page, "_run_btn")
+    assert hasattr(page, "_pause_btn")
+    assert "运行" in page._run_btn.toolTip()
+    assert "暂停" in page._pause_btn.toolTip()
+
+
+def test_run_pause_buttons_initially_disabled(qtbot, tmp_path):
+    """初始状态（未知）两个按钮均禁用。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert page._run_btn.isEnabled() is False
+    assert page._pause_btn.isEnabled() is False
+
+
+def test_run_pause_buttons_are_children_of_editor(qtbot, tmp_path):
+    """运行/暂停按钮是编辑器子控件（浮动定位）。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert page._run_btn.parent() is page._editor
+    assert page._pause_btn.parent() is page._editor
+
+
+def test_on_host_state_changed_start_enables_pause_disables_run(qtbot, tmp_path):
+    """监控状态 start → 运行禁用、暂停启用。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("start")
+    assert page._run_btn.isEnabled() is False
+    assert page._pause_btn.isEnabled() is True
+
+
+def test_on_host_state_changed_stop_enables_run_disables_pause(qtbot, tmp_path):
+    """监控状态 stop → 运行启用、暂停禁用。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("stop")
+    assert page._run_btn.isEnabled() is True
+    assert page._pause_btn.isEnabled() is False
+
+
+def test_on_host_state_changed_empty_disables_both(qtbot, tmp_path):
+    """监控状态 "" → 视为未知状态，运行按钮仍启用（与 stop 一致）。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("stop")   # 先设一个有效状态
+    page.on_host_state_changed("")        # 再清空
+    # 空字符串走 else 分支，_running = False，等同 stop 态
+    assert page._run_btn.isEnabled() is True
+    assert page._pause_btn.isEnabled() is False
+
+
+def test_run_button_click_emits_run_toggle(qtbot, tmp_path):
+    """点击运行按钮 emit run_toggle_requested 信号，并乐观切换状态。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("stop")   # 初始：已暂停
+    fired = []
+    page.run_toggle_requested.connect(lambda: fired.append(True))
+    page._run_btn.click()
+    assert fired == [True]
+    # 乐观更新：运行按钮禁用、暂停按钮启用
+    assert page._run_btn.isEnabled() is False
+    assert page._pause_btn.isEnabled() is True
+
+
+def test_pause_button_click_emits_run_toggle(qtbot, tmp_path):
+    """点击暂停按钮 emit run_toggle_requested 信号，并乐观切换状态。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("start")  # 初始：运行中
+    fired = []
+    page.run_toggle_requested.connect(lambda: fired.append(True))
+    page._pause_btn.click()
+    assert fired == [True]
+    # 乐观更新：暂停按钮禁用、运行按钮启用
+    assert page._pause_btn.isEnabled() is False
+    assert page._run_btn.isEnabled() is True
+
+
+def test_set_busy_disables_run_pause_buttons(qtbot, tmp_path):
+    """下发忙碌时运行/暂停按钮均禁用。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("stop")   # 运行按钮应启用
+    assert page._run_btn.isEnabled() is True
+    page.set_busy(True)
+    assert page._run_btn.isEnabled() is False
+    assert page._pause_btn.isEnabled() is False
+    page.set_busy(False)
+    assert page._run_btn.isEnabled() is True   # 恢复
+
+
+def test_set_busy_false_restores_run_state(qtbot, tmp_path):
+    """忙碌结束后恢复为运行状态对应的按钮启用态。"""
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    page.on_host_state_changed("start")  # 运行中
+    page.set_busy(True)
+    assert page._run_btn.isEnabled() is False
+    page.set_busy(False)
+    assert page._run_btn.isEnabled() is False   # 运行中，运行按钮仍禁用
+    assert page._pause_btn.isEnabled() is True  # 运行中，暂停按钮启用
