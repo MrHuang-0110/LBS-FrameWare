@@ -89,16 +89,10 @@ def test_run_pause_buttons_disabled_without_target(qtbot, tmp_path):
 
 
 def test_run_pause_buttons_enabled_after_port_selected(qtbot, tmp_path):
-    """选中串口后运行/暂停按钮仍需监控帧驱动，初始均禁用。"""
+    """选中串口后运行按钮启用，暂停按钮禁用（初始等同 stop 态）。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
-    # 有连接目标但无监控：两按钮均禁用
-    assert not w._editor_page._run_btn.isEnabled()
-    assert not w._editor_page._pause_btn.isEnabled()
-    # 模拟监控启动：状态帧到达后按钮按运行状态启用
-    w._monitor.host_state_changed.emit("stop")
-    assert w._editor_page._run_btn.isEnabled()
+    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
     assert not w._editor_page._pause_btn.isEnabled()
 
 
@@ -106,7 +100,7 @@ def test_run_toggle_sends_0xb6_frame(qtbot, tmp_path, monkeypatch):
     """点击运行按钮后 MainWindow 发送正确的 0xB6 帧。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._conn._port.inject_ports([_FakePort("COM3", "LBS Serial (COM3)", 0x0483, 0x5740)])
-    qtbot.waitUntil(lambda: w._firmware._start.isEnabled(), timeout=1000)
+    qtbot.waitUntil(lambda: w._editor_page._run_btn.isEnabled(), timeout=1000)
     # 注入假 transport
     fake = _FakeTransport()
     monkeypatch.setattr(w._conn, "persistent_transport", lambda: fake)

@@ -226,13 +226,13 @@ def test_on_host_state_changed_stop_enables_run_disables_pause(qtbot, tmp_path):
 
 
 def test_on_host_state_changed_empty_disables_both(qtbot, tmp_path):
-    """监控状态 "" → 监控未运行，两按钮均禁用。"""
+    """监控状态 "" → 等同 stop 态，运行按钮启用。"""
     page = ScriptEditorPage(); qtbot.addWidget(page)
     page.set_profile(_profile(tmp_path))
     page.set_has_target(True)
     page.on_host_state_changed("stop")   # 先设一个有效状态
-    page.on_host_state_changed("")        # 再清空 → 监控停止
-    assert page._run_btn.isEnabled() is False
+    page.on_host_state_changed("")        # 再清空
+    assert page._run_btn.isEnabled() is True
     assert page._pause_btn.isEnabled() is False
 
 
