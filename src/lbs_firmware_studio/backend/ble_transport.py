@@ -196,6 +196,7 @@ class BleTransport:
 
     def read_byte(self, timeout: float) -> int | None:
         if self._data_handler is not None:
+            print(f"[DEBUG] BleTransport.read_byte: data_handler set, returning None")
             return None
         try:
             return self._rx_queue.get(timeout=timeout)
@@ -219,11 +220,17 @@ class BleTransport:
         # 链路层按协商 MTU 分片（与协议层 chunk_size 正交）。
         # 带响应写(response=True)逐片等设备 BLE 层确认，形成背压，避免多分片背靠背
         # 连发时设备侧透传缓冲溢出丢字节；仅在写特征值支持 'write' 时启用。
+        total_frags = (len(data) + self._mtu - 1) // self._mtu
+        print(f"[DEBUG] _write: {len(data)}B, mtu={self._mtu}, frags={total_frags}, write_response={self._write_response}")
         for i in range(0, len(data), self._mtu):
+            frag = data[i:i + self._mtu]
+            print(f"[DEBUG]   frag {i//self._mtu+1}/{total_frags}: {len(frag)}B {frag[:8].hex(' ')}...")
             await self._client.write_gatt_char(
-                self._write_uuid, data[i:i + self._mtu], response=self._write_response)
+                self._write_uuid, frag, response=self._write_response)
             if not self._write_response:
+                print(f"[DEBUG]   sleep 50ms (no backpressure)")
                 await asyncio.sleep(0.05)  # 无背压时 50ms 片间延迟，防设备缓冲溢出
+        print(f"[DEBUG] _write: done")
 
     def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
                         post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:
