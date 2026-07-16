@@ -39,15 +39,17 @@ class DeviceDeployer(QObject):
         return out
 
     def _make_protocol(self, profile: DeviceProfile):
+        is_ble = getattr(self._transport, "link_kind", "serial") == "ble"
         if profile.protocol == "custom_frame":
-            return CustomFrameProtocol(chunk_size=profile.chunk_size, ack_timeout=profile.ack_timeout,
+            # BLE 链路下设备 Flash 擦写耗时可能 >2s，放大超时避免非末帧误判超时
+            return CustomFrameProtocol(chunk_size=profile.chunk_size,
+                                       ack_timeout=90.0 if is_ble else profile.ack_timeout,
                                        last_frame_ack=profile.last_frame_ack,
                                        filename_encoding=profile.filename_encoding,
                                        log_cb=self.log.emit)
         # YMODEM 块大小按链路区分：蓝牙(ECB02 透传)单帧 ≤248B，1024 块会被拆多片致设备缓冲
         # 溢出→NAK→CAN(真机复现)。故蓝牙用 128B 块(YMODEM 包 133B 一次发出)，USB 沿用 1024。
         # 对齐参考工具 LBS-NEXT-AI/tools/pika_deploy.py 的 BT_YMODEM_BLOCK/USB_YMODEM_BLOCK。
-        is_ble = getattr(self._transport, "link_kind", "serial") == "ble"
         block_size = 128 if is_ble else profile.chunk_size
         return YmodemProtocol(block_size=block_size, ack_timeout=90.0 if is_ble else 12.0,
                               log_cb=self.log.emit)
