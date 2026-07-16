@@ -3,7 +3,7 @@
 from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QLabel, QPushButton, QMessageBox)
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 import qtawesome as qta
 from .. import theme
 from ..widgets.port_selector import PortSelector
@@ -16,6 +16,8 @@ _RENDER_INTERVAL_MS = 100
 
 
 class MonitorPage(QWidget):
+    host_state_changed = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._profile = None
@@ -67,6 +69,7 @@ class MonitorPage(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(_RENDER_INTERVAL_MS)
         self._timer.timeout.connect(self._render)
+        self._last_host_state = ""
 
     # --- profile ---
     def set_profile(self, profile) -> None:
@@ -139,9 +142,14 @@ class MonitorPage(QWidget):
     def stop_monitor(self) -> None:
         self._timer.stop()
         self._worker.stop()
+        self._last_host_state = ""
+        self.host_state_changed.emit("")
 
     def _on_worker_state(self, state: str) -> None:
         self._monitoring = (state == "connected")
+        if not self._monitoring:
+            self._last_host_state = ""
+            self.host_state_changed.emit("")
         self._start_btn.setText("■ 停止监控" if self._monitoring else "▶ 开始监控")
         # 传感器更新仅在 NEW-AI 且监控中可用
         prof = MONITOR_PROFILES.get(self._profile.name) if self._profile else None
@@ -172,6 +180,8 @@ class MonitorPage(QWidget):
             sensor_key, fields = self._extract_sensor(item)
             card.update(sensor_key, fields)
         self._status.update_from(frame)
+        # --- 提取运行状态 ---
+        self._emit_host_state(frame)
 
     @staticmethod
     def _extract_sensor(item: "dict | None"):
@@ -183,6 +193,23 @@ class MonitorPage(QWidget):
                 continue
             return k, (v if isinstance(v, dict) else {})
         return None, {}
+
+    def _emit_host_state(self, frame: dict) -> None:
+        """从帧中提取运行状态，变化时 emit host_state_changed。"""
+        from .monitor_profiles import get_host_state_path, get_by_path
+        name = getattr(self._profile, "name", None) if self._profile else None
+        if name is None:
+            return
+        path = get_host_state_path(name)
+        if path is None:
+            return
+        raw = get_by_path(frame, path)
+        state = str(raw).strip().lower() if raw is not None else ""
+        if state not in ("start", "stop"):
+            state = ""  # 非预期值当未知处理
+        if state != self._last_host_state:
+            self._last_host_state = state
+            self.host_state_changed.emit(state)
 
     # --- 传感器更新 ---
     def _open_sensor_update(self) -> None:
