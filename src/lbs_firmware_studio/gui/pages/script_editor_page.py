@@ -16,6 +16,7 @@ _BLANK = "(空白)"
 
 class ScriptEditorPage(QWidget):
     deploy_requested = Signal(Path, int)   # (write目录/<slot>.py, slot)
+    run_toggle_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -48,13 +49,32 @@ class ScriptEditorPage(QWidget):
         self._deploy_btn.setIcon(qta.icon("fa5s.upload", color=theme.TEXT_ON_ACCENT))
         self._deploy_btn.setToolTip("下发到设备")
         self._deploy_btn.clicked.connect(self._on_deploy)
-        for b in (self._slot_btn, self._deploy_btn):
+
+        # 运行按钮
+        self._run_btn = QPushButton(self._editor)
+        self._run_btn.setObjectName("floatbtn")
+        self._run_btn.setIcon(qta.icon("fa5s.play", color=theme.ACCENT))
+        self._run_btn.setToolTip("运行程序")
+        self._run_btn.clicked.connect(self._on_run_toggle)
+        self._run_btn.setEnabled(False)
+
+        # 暂停按钮
+        self._pause_btn = QPushButton(self._editor)
+        self._pause_btn.setObjectName("floatbtn")
+        self._pause_btn.setIcon(qta.icon("fa5s.stop", color=theme.WARNING))
+        self._pause_btn.setToolTip("暂停程序")
+        self._pause_btn.clicked.connect(self._on_run_toggle)
+        self._pause_btn.setEnabled(False)
+
+        for b in (self._run_btn, self._pause_btn, self._slot_btn, self._deploy_btn):
             b.setFixedHeight(32)
             b.setStyleSheet(
                 f"QPushButton#floatbtn {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
                 f" border: 1px solid {theme.BORDER}; border-radius: 16px; padding: 4px 12px; }}"
                 f"QPushButton#floatbtn:hover {{ background: {theme.BG_HOVER}; }}"
                 f"QPushButton#floatbtn:pressed {{ background: {theme.BG_SELECTED}; }}")
+        self._running = False
+        self._busy = False
         self._editor.installEventFilter(self)
 
         # 底部：进度 + 日志（日志固定矮条，编辑器占绝大部分空间）
@@ -177,9 +197,13 @@ class ScriptEditorPage(QWidget):
         w = self._editor.width()
         self._deploy_btn.adjustSize()
         self._slot_btn.adjustSize()
+        self._pause_btn.adjustSize()
+        self._run_btn.adjustSize()
         dx = w - margin - self._deploy_btn.width()
         self._deploy_btn.move(dx, margin)
         self._slot_btn.move(dx - self._slot_btn.width() - 8, margin)
+        self._pause_btn.move(dx - self._slot_btn.width() - self._pause_btn.width() - 16, margin)
+        self._run_btn.move(dx - self._slot_btn.width() - self._pause_btn.width() - self._run_btn.width() - 24, margin)
 
     # --- 下发 ---
     def set_port_getter(self, fn) -> None:
@@ -198,6 +222,12 @@ class ScriptEditorPage(QWidget):
         if not path.exists():
             QMessageBox.warning(self, "提示", "当前槽位尚未保存，请先保存"); return
         self.deploy_requested.emit(path, self._slot)
+
+    def _on_run_toggle(self):
+        """点击运行/暂停按钮：emit 信号让 MainWindow 发 0xB6 命令，乐观更新 UI。"""
+        self._running = not self._running
+        self._apply_run_state()
+        self.run_toggle_requested.emit()
 
     # --- 保存 ---
     def _write_dir(self) -> Path:
@@ -231,11 +261,39 @@ class ScriptEditorPage(QWidget):
         self._log.append(msg, level=level)
 
     def set_busy(self, busy: bool) -> None:
+        self._busy = busy
         self._deploy_btn.setEnabled(not busy)
         self._save_btn.setEnabled(not busy)
         self._open_btn.setEnabled(not busy)
         self._slot_btn.setEnabled(not busy)
         self._tpl_combo.setEnabled(not busy)
+        if busy:
+            self._run_btn.setEnabled(False)
+            self._pause_btn.setEnabled(False)
+        else:
+            self._apply_run_state()
+
+    def on_host_state_changed(self, state: str) -> None:
+        """接收监控帧确认的运行状态，以帧值为准。"""
+        if state == "start":
+            self._running = True
+        elif state == "stop":
+            self._running = False
+        else:
+            self._running = False   # 未知/空 → 禁用两按钮
+        self._apply_run_state()
+
+    def _apply_run_state(self) -> None:
+        """根据 _running 和 _busy 更新运行/暂停按钮启用态。"""
+        if self._busy:
+            self._run_btn.setEnabled(False)
+            self._pause_btn.setEnabled(False)
+        elif self._running:
+            self._run_btn.setEnabled(False)
+            self._pause_btn.setEnabled(True)
+        else:
+            self._run_btn.setEnabled(True)
+            self._pause_btn.setEnabled(False)
 
     def progress_value(self) -> int:
         return self._bar.value()
