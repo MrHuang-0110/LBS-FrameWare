@@ -97,7 +97,7 @@ class CustomFrameProtocol(TransferProtocol):
         while time.monotonic() < deadline:
             b = t.read_byte(timeout=max(0.05, _remaining()))
             if b is None:
-                print(f"[DEBUG]   _wait_ack: read_byte timeout, is_last={is_last}, bytes_read_before_timeout=0")
+                print(f"[DEBUG]   _wait_ack: {time.time():.0f}s read_byte timeout, is_last={is_last}, waited={time.monotonic()-deadline+timeout:.1f}s")
                 return True if is_last else False
             if b != pf.HEADER:
                 continue  # 丢弃噪声，继续找帧头
