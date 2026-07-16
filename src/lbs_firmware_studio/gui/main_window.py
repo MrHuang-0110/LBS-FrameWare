@@ -116,8 +116,9 @@ class MainWindow(QWidget):
 
     def _on_nav(self, key: str):
         # 离开监控页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
-        if key != "monitor" and key != "editor" and self._monitor.is_monitoring():
-            self._monitor.stop_monitor()
+        monitor = getattr(self, "_monitor", None)
+        if monitor is not None and key != "monitor" and key != "editor" and monitor.is_monitoring():
+            monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
 
     def _on_connection_changed(self, connected: bool) -> None:
