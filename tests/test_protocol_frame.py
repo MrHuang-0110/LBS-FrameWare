@@ -1,6 +1,7 @@
 from lbs_firmware_studio.backend.protocol_frame import (
     HEADER, SOURCE, DEST, FOOTER, CMD_RESET, CMD_ACK, CMD_FILE_START,
     FOLDER_CMD_MAP, calculate_checksum, build_frame, parse_frame,
+    CMD_RUN_TOGGLE,
 )
 
 def test_checksum_is_sum_low8():
@@ -39,3 +40,15 @@ def test_parse_rejects_bad_footer():
 def test_folder_cmd_map():
     assert FOLDER_CMD_MAP["app"] == CMD_FILE_START
     assert FOLDER_CMD_MAP["version"] == 0xDD
+
+
+def test_run_toggle_frame_matches_device_protocol():
+    """验证 0xB6 帧与真机协议逐字节一致：5A 97 98 01 B6 01 41 A5"""
+    frame = build_frame(CMD_RUN_TOGGLE, b"\x01")
+    expected = bytes([0x5A, 0x97, 0x98, 0x01, 0xB6, 0x01, 0x41, 0xA5])
+    assert frame == expected
+    assert len(frame) == 8
+
+
+def test_run_toggle_cmd_value():
+    assert CMD_RUN_TOGGLE == 0xB6
