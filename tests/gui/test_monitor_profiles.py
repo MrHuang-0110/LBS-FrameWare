@@ -1,5 +1,6 @@
 from lbs_firmware_studio.gui.pages.monitor_profiles import (
     MONITOR_PROFILES, SENSOR_NAMES, get_by_path, sensor_display_name,
+    get_host_state_path,
 )
 
 
@@ -39,3 +40,23 @@ def test_sensor_display_name_known_and_unknown():
     assert sensor_display_name("color") == "颜色"
     assert sensor_display_name("gray_v2") == "灰度V2"
     assert sensor_display_name("weird_key") == "weird_key"   # 未知原样返回
+
+
+def test_get_host_state_path_new_ai():
+    assert get_host_state_path("NEW-AI") == "NewAiState"
+
+
+def test_get_host_state_path_spark_ai():
+    assert get_host_state_path("SPARK-AI") == "WillAiState"
+
+
+def test_get_host_state_path_next_ai():
+    assert get_host_state_path("NEXT-AI") == "State"
+
+
+def test_get_host_state_path_unknown_product():
+    assert get_host_state_path("UNKNOWN") is None
+
+
+def test_get_host_state_path_none():
+    assert get_host_state_path(None) is None
