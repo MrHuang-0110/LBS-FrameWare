@@ -142,8 +142,6 @@ class MonitorPage(QWidget):
     def stop_monitor(self) -> None:
         self._timer.stop()
         self._worker.stop()
-        self._last_host_state = ""
-        self.host_state_changed.emit("")
 
     def _on_worker_state(self, state: str) -> None:
         self._monitoring = (state == "connected")

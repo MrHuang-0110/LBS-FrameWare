@@ -1,3 +1,5 @@
+from PySide6.QtCore import Signal
+
 from lbs_firmware_studio.gui.pages.monitor_page import MonitorPage
 from lbs_firmware_studio.backend.profile import DeviceProfile
 
@@ -65,3 +67,75 @@ def test_unknown_product_shows_message_no_crash(qtbot):
     p = MonitorPage(); qtbot.addWidget(p)
     p.set_profile(_profile("MYSTERY"))
     assert p.card_count() == 0        # 无卡片，不崩溃
+
+
+def test_host_state_changed_emits_on_start(qtbot):
+    """监控帧中运行状态为 start 时 emit host_state_changed("start")"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("NEW-AI"))
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    frame = dict(NEW_AI_FRAME)
+    frame["NewAiState"] = "start"
+    p._on_frame(frame)
+    p._render()
+    assert states == ["start"]
+
+
+def test_host_state_changed_emits_on_stop(qtbot):
+    """监控帧中运行状态为 stop 时 emit host_state_changed("stop")"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("NEW-AI"))
+    # 先发一次 start 建立初始状态
+    frame_start = dict(NEW_AI_FRAME)
+    frame_start["NewAiState"] = "start"
+    p._on_frame(frame_start)
+    p._render()
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    frame_stop = dict(NEW_AI_FRAME)
+    frame_stop["NewAiState"] = "stop"
+    p._on_frame(frame_stop)
+    p._render()
+    assert states == ["stop"]
+
+
+def test_host_state_changed_not_emitted_on_same_state(qtbot):
+    """状态与上次相同时不重复 emit"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("NEW-AI"))
+    frame = dict(NEW_AI_FRAME)
+    frame["NewAiState"] = "stop"
+    p._on_frame(frame)
+    p._render()
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    # 再发一次相同状态
+    p._on_frame(frame)
+    p._render()
+    assert states == []  # 未变化，不 emit
+
+
+def test_host_state_changed_emits_empty_on_stop_monitor(qtbot):
+    """监控停止时 emit host_state_changed("")"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("NEW-AI"))
+    frame = dict(NEW_AI_FRAME)
+    frame["NewAiState"] = "start"
+    p._on_frame(frame)
+    p._render()
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    p.stop_monitor()
+    assert states == [""]
+
+
+def test_host_state_changed_unknown_product_no_emit(qtbot):
+    """未知产品不 emit host_state_changed"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_profile(_profile("MYSTERY"))
+    states = []
+    p.host_state_changed.connect(lambda s: states.append(s))
+    p._on_frame({"version": 1})
+    p._render()
+    assert states == []
