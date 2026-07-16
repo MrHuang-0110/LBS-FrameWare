@@ -41,9 +41,8 @@ class DeviceDeployer(QObject):
     def _make_protocol(self, profile: DeviceProfile):
         is_ble = getattr(self._transport, "link_kind", "serial") == "ble"
         if profile.protocol == "custom_frame":
-            # BLE 链路下设备 Flash 擦写耗时可能 >2s，放大超时避免非末帧误判超时
             return CustomFrameProtocol(chunk_size=profile.chunk_size,
-                                       ack_timeout=90.0 if is_ble else profile.ack_timeout,
+                                       ack_timeout=profile.ack_timeout,
                                        last_frame_ack=profile.last_frame_ack,
                                        filename_encoding=profile.filename_encoding,
                                        log_cb=self.log.emit)

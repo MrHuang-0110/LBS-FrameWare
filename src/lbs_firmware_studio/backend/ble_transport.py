@@ -222,6 +222,8 @@ class BleTransport:
         for i in range(0, len(data), self._mtu):
             await self._client.write_gatt_char(
                 self._write_uuid, data[i:i + self._mtu], response=self._write_response)
+            if not self._write_response:
+                await asyncio.sleep(0.01)  # 无背压时 10ms 片间延迟，防设备缓冲溢出
 
     def wait_for_reopen(self, port: str, baud: int, retries: int, delay: float,
                         post_delay: float = 0.0, disappear_timeout: float = 5.0) -> bool:
