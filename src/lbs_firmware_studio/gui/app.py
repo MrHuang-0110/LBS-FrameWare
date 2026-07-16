@@ -52,7 +52,7 @@ def main(argv=None) -> int:
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     profiles = load_profiles(config_path)
     ctl = AppController(profiles, raw, config_path)
-    ctl.show_startup()
+    ctl.on_product_selected("NEW-AI")
     app._ctl = ctl  # 防止被 GC
     return app.exec()
 
