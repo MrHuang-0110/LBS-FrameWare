@@ -49,37 +49,28 @@ class CustomFrameProtocol(TransferProtocol):
     def _send_file_with_cmd(self, t, path, cmd, on_progress):
         name = path.name.encode(self.filename_encoding)
         data = path.read_bytes()
-        link = getattr(t, "link_kind", "serial")
-        print(f"[DEBUG] send_file: {path.name}, {len(data)}B, link={link}, chunk={self.chunk_size}, ack_to={self.ack_timeout}s")
         if self.log_cb:
             self.log_cb(f"发送 {path.name}")
-        self._send_and_wait(t, pf.build_frame(cmd, name), label=f"{path.name}:filename")
+        self._send_and_wait(t, pf.build_frame(cmd, name))
         time.sleep(0.05)
-        total = len(data); sent = 0; chunk_idx = 0
+        total = len(data); sent = 0
         while sent < total:
             chunk = data[sent:sent + self.chunk_size]
             is_last = sent + len(chunk) >= total
             c = pf.CMD_FILE_END if is_last else pf.CMD_FILE_DATA
-            self._send_and_wait(t, pf.build_frame(c, chunk), is_last=is_last,
-                                label=f"{path.name}:chunk{chunk_idx} last={is_last}")
+            self._send_and_wait(t, pf.build_frame(c, chunk), is_last=is_last)
             sent += len(chunk)
-            chunk_idx += 1
             on_progress(sent, total)
 
     def finish_session(self, t: SerialTransport, *, firmware: bool) -> None:
         pass  # 设备自行重启
 
-    def _send_and_wait(self, t: SerialTransport, frame: bytes, *, is_last: bool = False, label: str = "?") -> None:
+    def _send_and_wait(self, t: SerialTransport, frame: bytes, *, is_last: bool = False) -> None:
         timeout = self._last_frame_timeout() if is_last else self.ack_timeout
-        print(f"[DEBUG] _send_and_wait: {label} len={len(frame)} is_last={is_last} timeout={timeout}s")
         for attempt in range(self.max_retries):
-            print(f"[DEBUG]   attempt {attempt+1}/{self.max_retries} writing...")
             t.write(frame)
-            print(f"[DEBUG]   write done, waiting for ACK...")
             if self._wait_ack(t, timeout, is_last=is_last):
-                print(f"[DEBUG]   ACK received!")
                 return
-            print(f"[DEBUG]   no ACK, retrying...")
         raise TimeoutError(f"no ACK after {self.max_retries} retries")
 
     def _wait_ack(self, t: SerialTransport, timeout: float, *, is_last: bool) -> bool:
@@ -97,7 +88,6 @@ class CustomFrameProtocol(TransferProtocol):
         while time.monotonic() < deadline:
             b = t.read_byte(timeout=max(0.05, _remaining()))
             if b is None:
-                print(f"[DEBUG]   _wait_ack: {time.time():.0f}s read_byte timeout, is_last={is_last}, waited={time.monotonic()-deadline+timeout:.1f}s")
                 return True if is_last else False
             if b != pf.HEADER:
                 continue  # 丢弃噪声，继续找帧头
