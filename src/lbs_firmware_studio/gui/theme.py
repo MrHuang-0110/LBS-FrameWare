@@ -29,6 +29,24 @@ PRODUCT_GREEN = "#4EC9B0"   # 产品名绿色（同 SUCCESS，语义化别名）
 UI_FONT = "'Inter', 'Segoe UI Variable', 'Segoe UI', 'Microsoft YaHei UI', sans-serif"
 MONO_FONT = "'Cascadia Code', 'Consolas', monospace"
 
+# ── 间距刻度（8px 节奏，供各页面统一 margins/spacing）──
+SPACE_XS = 4
+SPACE_SM = 8
+SPACE_MD = 12
+SPACE_LG = 16
+SPACE_XL = 24
+
+# ── 字号刻度（层级：说明/正文/小标题/标题）──
+FONT_CAPTION = 11   # 辅助说明、状态栏
+FONT_BODY = 13      # 正文（全局默认）
+FONT_SUBTITLE = 15  # 分组小标题
+FONT_TITLE = 18     # 页面/产品标题
+
+# ── 圆角刻度 ──
+RADIUS_SM = 6
+RADIUS_MD = 8
+RADIUS_LG = 10
+
 # 部署状态 -> 中文阶段文案（固件页/脚本页共用）
 STAGE_TEXT = {
     "idle": "就绪", "compiling": "编译中", "connecting": "连接中",
@@ -52,25 +70,28 @@ def state_color(state: str) -> str:
 def app_qss() -> str:
     return f"""
     QWidget {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};
-        font-family: {UI_FONT}; font-size: 13px; }}
-    QFrame#card {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: 10px; }}
+        font-family: {UI_FONT}; font-size: {FONT_BODY}px; }}
+    QFrame#card {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: {RADIUS_LG}px; }}
     QLabel {{ background: transparent; }}
-    QGroupBox {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: 8px;
-        margin-top: 14px; padding: 12px; }}
+    QGroupBox {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: {RADIUS_MD}px;
+        margin-top: 16px; padding: {SPACE_MD}px; }}
     QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left;
-        left: 12px; padding: 0 4px; color: {TEXT_SECONDARY}; }}
+        left: {SPACE_MD}px; padding: 0 {SPACE_XS}px; color: {TEXT_SECONDARY};
+        font-size: {FONT_SUBTITLE}px; font-weight: 600; }}
     QPushButton#primary {{ background: {ACCENT}; color: {TEXT_ON_ACCENT}; border: none;
-        border-radius: 6px; padding: 6px 14px; }}
+        border-radius: {RADIUS_SM}px; padding: 7px 16px; font-weight: 600; }}
     QPushButton#primary:hover {{ background: {ACCENT_HOVER}; }}
     QPushButton#primary:pressed {{ background: {BG_SELECTED}; }}
     QPushButton#primary:disabled {{ background: {BG_INPUT}; color: {TEXT_DISABLED}; }}
     QPushButton {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 6px; padding: 5px 12px; }}
-    QPushButton:hover {{ background: {BG_HOVER}; }}
+        border: 1px solid {BORDER}; border-radius: {RADIUS_SM}px; padding: 5px 12px; }}
+    QPushButton:hover {{ background: {BG_HOVER}; border-color: {ACCENT_HOVER}; }}
     QPushButton:pressed {{ background: {BG_SELECTED}; }}
     QPushButton:disabled {{ color: {TEXT_DISABLED}; border-color: {BG_INPUT}; }}
+    QPushButton:focus {{ border: 1px solid {ACCENT}; }}
     QComboBox {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
+        border: 1px solid {BORDER}; border-radius: {RADIUS_SM}px; padding: 4px 8px; }}
+    QComboBox:focus {{ border-color: {ACCENT}; }}
     QComboBox QAbstractItemView {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
         selection-background-color: {BG_SELECTED}; }}
     QRadioButton {{ background: transparent; color: {TEXT_PRIMARY}; spacing: 6px; }}
@@ -81,12 +102,15 @@ def app_qss() -> str:
     QRadioButton::indicator:checked {{ border: 4px solid {ACCENT}; background: {TEXT_ON_ACCENT}; }}
     QRadioButton::indicator:disabled {{ border-color: {BG_INPUT}; background: {BG_INPUT}; }}
     QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 8px; }}
+        border: 1px solid {BORDER}; border-radius: {RADIUS_SM}px; padding: 5px 8px; }}
+    QLineEdit:focus {{ border-color: {ACCENT}; }}
+    QLineEdit:read-only {{ color: {TEXT_SECONDARY}; }}
     QPlainTextEdit, QTextEdit {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};
-        border: 1px solid {BORDER}; border-radius: 6px;
+        border: 1px solid {BORDER}; border-radius: {RADIUS_SM}px;
         font-family: {MONO_FONT}; }}
     QProgressBar {{ border: none; border-radius: 3px; background: {BG_INPUT};
         height: 6px; text-align: center; color: {TEXT_PRIMARY}; }}
     QProgressBar::chunk {{ background: {ACCENT}; border-radius: 3px; }}
-    QToolTip {{ background: {BG_SIDEBAR}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER}; }}
+    QToolTip {{ background: {BG_SIDEBAR}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER};
+        padding: 4px 8px; }}
     """

@@ -33,6 +33,7 @@ class ScriptEditorPage(QWidget):
         self._save_btn = QPushButton("保存")
         self._save_btn.clicked.connect(self.save)
         top = QHBoxLayout()
+        top.setSpacing(theme.SPACE_SM)
         top.addWidget(QLabel("模板:")); top.addWidget(self._tpl_combo, 1)
         top.addWidget(self._open_btn)
         top.addWidget(self._save_btn)
@@ -86,6 +87,8 @@ class ScriptEditorPage(QWidget):
         self._log.setMaximumHeight(140)
 
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
+        lay.setSpacing(theme.SPACE_SM)
         lay.addLayout(top)
         lay.addWidget(self._editor, 1)   # 唯一可伸缩
         lay.addWidget(self._stage)

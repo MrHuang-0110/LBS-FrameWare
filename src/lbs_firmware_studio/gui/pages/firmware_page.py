@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QLineEdit, QGroupBox)
 from PySide6.QtCore import Signal
+import qtawesome as qta
 from .. import theme
 from ..widgets.log_view import LogView
 
@@ -15,18 +16,24 @@ class FirmwarePage(QWidget):
         self._profile = None
         self._dir_edit = QLineEdit(); self._dir_edit.setReadOnly(True)
         self._summary = QLabel("待发送: -")
-        self._start = QPushButton("▶ 开始固件更新"); self._start.setObjectName("primary")
+        self._start = QPushButton("开始固件更新"); self._start.setObjectName("primary")
+        self._start.setIcon(qta.icon("fa5s.download", color=theme.TEXT_ON_ACCENT))
         self._start.clicked.connect(self.start_requested.emit)
         self._stage = QLabel("就绪")
+        self._stage.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
         self._log = LogView()
 
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
+        lay.setSpacing(theme.SPACE_MD)
 
         # 组1：固件源
         src_group = QGroupBox("固件源")
         src_lay = QVBoxLayout(src_group)
-        row = QHBoxLayout(); row.addWidget(QLabel("目录:")); row.addWidget(self._dir_edit, 1)
+        src_lay.setSpacing(theme.SPACE_SM)
+        row = QHBoxLayout(); row.setSpacing(theme.SPACE_SM)
+        row.addWidget(QLabel("目录:")); row.addWidget(self._dir_edit, 1)
         src_lay.addLayout(row)
         src_lay.addWidget(self._summary)
         lay.addWidget(src_group)
@@ -34,6 +41,7 @@ class FirmwarePage(QWidget):
         # 组2：操作与进度
         op_group = QGroupBox("操作")
         op_lay = QVBoxLayout(op_group)
+        op_lay.setSpacing(theme.SPACE_SM)
         op_lay.addWidget(self._start)
         op_lay.addWidget(self._stage)
         op_lay.addWidget(self._bar)
@@ -42,6 +50,7 @@ class FirmwarePage(QWidget):
         # 组3：日志
         log_group = QGroupBox("日志")
         log_lay = QVBoxLayout(log_group)
+        log_lay.setSpacing(theme.SPACE_SM)
         log_lay.addWidget(self._log)
         lay.addWidget(log_group, 1)
 

@@ -33,7 +33,8 @@ class MonitorPage(QWidget):
 
         # 顶栏
         self._port = PortSelector()
-        self._start_btn = QPushButton("▶ 开始监控"); self._start_btn.setObjectName("primary")
+        self._start_btn = QPushButton("开始监控"); self._start_btn.setObjectName("primary")
+        self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
         self._start_btn.clicked.connect(self._toggle_monitor)
         self._update_btn = QPushButton("传感器更新")
         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
@@ -60,6 +61,8 @@ class MonitorPage(QWidget):
             f"color:{theme.TEXT_SECONDARY}; background:transparent;")
 
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
+        lay.setSpacing(theme.SPACE_MD)
         lay.addLayout(top)
         lay.addWidget(self._notice)
         lay.addWidget(self._grid_host, 1)
@@ -151,7 +154,12 @@ class MonitorPage(QWidget):
         if not self._monitoring:
             self._last_host_state = ""
             self.host_state_changed.emit("")
-        self._start_btn.setText("■ 停止监控" if self._monitoring else "▶ 开始监控")
+        if self._monitoring:
+            self._start_btn.setText("停止监控")
+            self._start_btn.setIcon(qta.icon("fa5s.stop", color=theme.TEXT_ON_ACCENT))
+        else:
+            self._start_btn.setText("开始监控")
+            self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
         # 传感器更新仅在 NEW-AI 且监控中可用
         prof = MONITOR_PROFILES.get(self._profile.name) if self._profile else None
         can_update = self._monitoring and bool(prof and prof["sensor_update"])

@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QStackedWidget, QMessageBox)
 from PySide6.QtCore import Signal, QThread
+import qtawesome as qta
 from . import theme
 from .widgets.activity_bar import ActivityBar
 from .widgets.status_bar import StatusBar
@@ -46,14 +47,19 @@ class MainWindow(QWidget):
         self.setMinimumSize(900, 600)
 
         # 顶栏
-        self._product_lbl = QLabel(f"◆ {profile.name}")
-        self._product_lbl.setStyleSheet(f"font-size:14px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
+        self._product_lbl = QLabel(profile.name)
+        self._product_lbl.setStyleSheet(f"font-size:{theme.FONT_SUBTITLE}px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
+        self._product_icon = QLabel()
+        self._product_icon.setPixmap(qta.icon("fa5s.microchip", color=theme.ACCENT).pixmap(16, 16))
+        self._product_icon.setStyleSheet("background: transparent;")
         self._conn = ConnectionSelector()
         self._switch_btn = QPushButton("切换产品")
+        self._switch_btn.setIcon(qta.icon("fa5s.exchange-alt", color=theme.TEXT_PRIMARY))
         self._switch_btn.clicked.connect(self.switch_product_requested.emit)
-        top = QWidget(); top.setFixedHeight(36); top.setStyleSheet(f"background: {theme.BG_BAR};")
-        toplay = QHBoxLayout(top); toplay.setContentsMargins(12, 0, 12, 0)
-        toplay.addWidget(self._product_lbl); toplay.addStretch(1)
+        top = QWidget(); top.setFixedHeight(40); top.setStyleSheet(f"background: {theme.BG_BAR};")
+        toplay = QHBoxLayout(top); toplay.setContentsMargins(theme.SPACE_MD, 0, theme.SPACE_MD, 0)
+        toplay.setSpacing(theme.SPACE_SM)
+        toplay.addWidget(self._product_icon); toplay.addWidget(self._product_lbl); toplay.addStretch(1)
         toplay.addWidget(self._conn); toplay.addWidget(self._switch_btn)
 
         # Activity Bar + 页面栈

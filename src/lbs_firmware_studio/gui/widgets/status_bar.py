@@ -1,6 +1,7 @@
 """VS Code 风格底部状态栏：蓝色条，左连接状态，右产品名+运行状态。"""
 from __future__ import annotations
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
+import qtawesome as qta
 from .. import theme
 
 _STATE_TEXT = {
@@ -13,26 +14,38 @@ _STATE_TEXT = {
 class StatusBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(22)
+        self.setFixedHeight(24)
         self.setStyleSheet(f"background: {theme.STATUSBAR};")
-        self._conn = QLabel("○ 未连接")
+        self._icon = QLabel()
+        self._conn = QLabel("未连接")
         self._product_lbl = QLabel("")
         self._state = "idle"
         self._product = ""
         for lbl in (self._conn, self._product_lbl):
-            lbl.setStyleSheet(f"color: {theme.TEXT_ON_ACCENT}; font-size: 12px; background: transparent;")
+            lbl.setStyleSheet(f"color: {theme.TEXT_ON_ACCENT}; font-size: {theme.FONT_CAPTION}px; background: transparent;")
+        self._icon.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 0, 10, 0)
+        lay.setContentsMargins(theme.SPACE_MD, 0, theme.SPACE_MD, 0)
+        lay.setSpacing(theme.SPACE_XS + 2)
+        lay.addWidget(self._icon)
         lay.addWidget(self._conn)
         lay.addStretch(1)
         lay.addWidget(self._product_lbl)
+        self._update_conn_icon(False)
         self._refresh_product()
+
+    def _update_conn_icon(self, connected: bool) -> None:
+        color = theme.TEXT_ON_ACCENT if connected else theme.TEXT_DISABLED
+        name = "fa5s.circle" if connected else "fa5s.circle-notch"
+        self._icon.setPixmap(qta.icon(name, color=color).pixmap(10, 10))
 
     def set_connection(self, port, baud) -> None:
         if port:
-            self._conn.setText(f"● {port} · {baud}")
+            self._conn.setText(f"{port} · {baud}")
+            self._update_conn_icon(True)
         else:
-            self._conn.setText("○ 未连接")
+            self._conn.setText("未连接")
+            self._update_conn_icon(False)
 
     def set_product(self, name: str) -> None:
         self._product = name
