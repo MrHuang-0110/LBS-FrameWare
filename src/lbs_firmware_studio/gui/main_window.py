@@ -133,13 +133,15 @@ class MainWindow(QWidget):
         self._stack.setCurrentWidget(self._pages[key])
 
     def _on_connection_changed(self, connected: bool) -> None:
-        """顶栏连接状态变化：刷新监控入口；断开时若正在监控则先停，避免用死链路。"""
+        """顶栏连接状态变化：连上即自动开始监控，断开即停止。"""
         monitor = getattr(self, "_monitor", None)
         if monitor is None:
             return
-        if not connected:
-            monitor.stop_monitor()
         monitor.set_transport_getter(self._conn.persistent_transport)
+        if connected:
+            monitor.start_monitor()   # 连接成功即自动监控，无需手动按钮
+        else:
+            monitor.stop_monitor()
         self._update_deploy_buttons()
 
     def _on_run_toggle(self):
@@ -241,6 +243,10 @@ class MainWindow(QWidget):
         self._switch_btn.setEnabled(True)
         self._activity.set_locked(False)
         self._status.set_connection(None, None)
+        # 下发前停了监控释放串口；下发结束后若链路仍在则自动恢复监控
+        monitor = getattr(self, "_monitor", None)
+        if monitor is not None and self._conn.persistent_transport() is not None:
+            monitor.start_monitor()
 
     # ---- 测试访问器（签名不变）----
     def header_text(self): return self._product_lbl.text()

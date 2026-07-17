@@ -33,9 +33,10 @@ class MonitorPage(QWidget):
 
         # 顶栏
         self._port = PortSelector()
+        # 监控自动启动（连接成功即监控），保留按钮对象供状态回调引用但不显示
         self._start_btn = QPushButton("开始监控"); self._start_btn.setObjectName("primary")
         self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
-        self._start_btn.clicked.connect(self._toggle_monitor)
+        self._start_btn.setVisible(False)
         self._update_btn = QPushButton("传感器更新")
         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
         self._update_btn.clicked.connect(self._open_sensor_update)
@@ -46,7 +47,7 @@ class MonitorPage(QWidget):
         self._port_lbl = QLabel("串口:")
         top.addWidget(self._port_lbl); top.addWidget(self._port, 1)
         top.addWidget(self._conn_hint, 1)
-        top.addWidget(self._start_btn); top.addWidget(self._update_btn)
+        top.addWidget(self._update_btn)
 
         # 卡片区（两列）
         self._grid = QGridLayout()

@@ -120,3 +120,21 @@ def test_leaving_device_stops_monitor(qtbot, tmp_path):
     w._monitor.stop_monitor = lambda: stopped.append(True)  # 打桩
     w.navigate("设置")     # 离开设备页到非编辑页
     assert stopped == [True]
+
+
+def test_connection_auto_starts_monitor(qtbot, tmp_path):
+    """连接成功后自动开始监控，断开后自动停止（无需手动按钮）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    started, stopped = [], []
+    w._monitor.start_monitor = lambda: started.append(True)
+    w._monitor.stop_monitor = lambda: stopped.append(True)
+    w._on_connection_changed(True)
+    assert started == [True] and stopped == []
+    w._on_connection_changed(False)
+    assert stopped == [True]
+
+
+def test_monitor_start_button_hidden(qtbot, tmp_path):
+    """监控自动启动后，手动"开始监控"按钮不再显示。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    assert w._monitor._start_btn.isVisible() is False

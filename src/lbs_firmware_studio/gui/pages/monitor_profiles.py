@@ -6,9 +6,9 @@ MONITOR_PROFILES: dict[str, dict] = {
     "NEW-AI": {
         "ports": 8,
         "status_fields": [
-            ("主机", "MAC"), ("版本", "version"), ("电量", "bat"),
-            ("运行状态", "NewAiState"), ("IMU", "mem"),
-            ("音量", "voic"), ("Heap", "heap"),
+            ("版本", "version"), ("IMU", "mem"), ("Heap", "heap"),
+            ("电量", "bat"), ("音量", "voic"), ("MAC", "MAC"),
+            ("运行状态", "NewAiState"),
         ],
         "sensor_update": True,
     },
