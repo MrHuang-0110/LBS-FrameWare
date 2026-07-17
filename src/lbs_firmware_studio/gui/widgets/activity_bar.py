@@ -7,8 +7,8 @@ from .. import theme
 
 # 功能名 tooltip
 _LABELS = {
-    "firmware": "固件更新", "scripts": "脚本下发", "editor": "代码编辑",
-    "monitor": "数据监控", "settings": "设置",
+    "device": "固件与监控", "firmware": "固件更新", "scripts": "脚本下发",
+    "editor": "代码编辑", "monitor": "数据监控", "settings": "设置",
 }
 
 

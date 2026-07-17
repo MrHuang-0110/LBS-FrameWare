@@ -3,8 +3,8 @@
 from __future__ import annotations
 from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QStackedWidget, QMessageBox)
-from PySide6.QtCore import Signal, QThread
+                               QPushButton, QStackedWidget, QMessageBox, QSplitter)
+from PySide6.QtCore import Signal, QThread, Qt
 import qtawesome as qta
 from . import theme
 from .widgets.activity_bar import ActivityBar
@@ -21,9 +21,8 @@ from ..backend import protocol_frame as pf
 
 # (key, 中文标签, icon, enabled)
 _NAV = [
-    ("firmware", "固件更新", "fa5s.download", True),
+    ("device", "固件与监控", "fa5s.microchip", True),
     ("editor", "代码编辑", "fa5s.code", True),
-    ("monitor", "数据监控", "fa5s.chart-line", True),
     ("settings", "设置", "fa5s.cog", True),
 ]
 _KEY2LABEL = {k: lbl for k, lbl, _, _ in _NAV}
@@ -102,34 +101,40 @@ class MainWindow(QWidget):
         self._conn.connection_changed.connect(self._on_connection_changed)
         # 串口/蓝牙设备选择变化时更新下发按钮使能态（未选目标时禁用）
         self._conn.target_changed.connect(self._update_deploy_buttons)
-        self._activity.set_current("firmware")
+        self._activity.set_current("device")
         self._update_deploy_buttons()  # 初始状态：PortSelector 异步扫描完成前按钮禁用
 
     def _make_page(self, key):
-        if key == "firmware":
-            self._firmware = FirmwarePage(); return self._firmware
-        if key == "editor":
-            self._editor_page = ScriptEditorPage(); return self._editor_page
-        if key == "monitor":
+        if key == "device":
+            # 固件更新 + 数据监控 左右分栏合并
+            self._firmware = FirmwarePage()
             self._monitor = MonitorPage()
             self._monitor.set_profile(self._profile)
             # 监控复用顶栏持久链路（串口/蓝牙）；未连接时回退本页串口选择
             self._monitor.set_transport_getter(self._conn.persistent_transport)
-            return self._monitor
+            splitter = QSplitter(Qt.Horizontal)
+            splitter.addWidget(self._firmware)
+            splitter.addWidget(self._monitor)
+            splitter.setStretchFactor(0, 2)   # 左固件
+            splitter.setStretchFactor(1, 3)   # 右监控（占更多）
+            splitter.setChildrenCollapsible(False)
+            return splitter
+        if key == "editor":
+            self._editor_page = ScriptEditorPage(); return self._editor_page
         if key == "settings":
             return SettingsPage(self._raw, self._path)
         return PlaceholderPage(_KEY2LABEL[key])
 
     def _on_nav(self, key: str):
-        # 离开监控页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
+        # 离开设备页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
         monitor = getattr(self, "_monitor", None)
-        if monitor is not None and key != "monitor" and key != "editor" and monitor.is_monitoring():
+        if monitor is not None and key != "device" and key != "editor" and monitor.is_monitoring():
             monitor.stop_monitor()
         self._stack.setCurrentWidget(self._pages[key])
 
     def _on_connection_changed(self, connected: bool) -> None:
-        """顶栏连接状态变化：刷新监控页入口；断开时若正在监控则先停，避免用死链路。"""
-        monitor = self._pages.get("monitor")
+        """顶栏连接状态变化：刷新监控入口；断开时若正在监控则先停，避免用死链路。"""
+        monitor = getattr(self, "_monitor", None)
         if monitor is None:
             return
         if not connected:

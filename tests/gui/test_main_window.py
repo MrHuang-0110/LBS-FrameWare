@@ -20,9 +20,11 @@ def test_shows_product_name(qtbot, tmp_path):
 def test_nav_items_present_and_locked(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     labels = w.nav_labels()
-    assert "固件更新" in labels and "代码编辑" in labels and "设置" in labels
+    assert "固件与监控" in labels and "代码编辑" in labels and "设置" in labels
     assert "脚本下发" not in labels          # scripts 项已隐藏（合并进代码编辑页）
-    assert w.is_nav_enabled("固件更新") is True
+    assert "固件更新" not in labels          # 固件更新已合并进"固件与监控"
+    assert "数据监控" not in labels          # 数据监控已合并进"固件与监控"
+    assert w.is_nav_enabled("固件与监控") is True
     assert w.is_nav_enabled("代码编辑") is True   # editor 现已启用
 
 
@@ -97,23 +99,24 @@ def test_main_window_initial_size(qtbot, tmp_path):
     assert (w.minimumWidth(), w.minimumHeight()) == (900, 600)
 
 
-def test_monitor_nav_enabled(qtbot, tmp_path):
+def test_device_nav_enabled(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    assert "数据监控" in w.nav_labels()
-    assert w.is_nav_enabled("数据监控") is True
+    assert "固件与监控" in w.nav_labels()
+    assert w.is_nav_enabled("固件与监控") is True
 
 
-def test_navigate_to_monitor_page(qtbot, tmp_path):
+def test_navigate_to_device_page(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w.navigate("数据监控")
-    assert w.current_page_name() == "数据监控"
+    w.navigate("代码编辑")
+    w.navigate("固件与监控")
+    assert w.current_page_name() == "固件与监控"
 
 
-def test_leaving_monitor_stops_it(qtbot, tmp_path):
+def test_leaving_device_stops_monitor(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w.navigate("数据监控")
+    w.navigate("固件与监控")
     w._monitor._monitoring = True  # 模拟监控正在运行
     stopped = []
     w._monitor.stop_monitor = lambda: stopped.append(True)  # 打桩
-    w.navigate("固件更新")     # 离开监控页
+    w.navigate("设置")     # 离开设备页到非编辑页
     assert stopped == [True]
