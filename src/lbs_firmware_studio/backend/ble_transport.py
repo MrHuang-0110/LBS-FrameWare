@@ -83,6 +83,10 @@ class _RealBleakClient:
     async def stop_notify(self, uuid):
         await self._c.stop_notify(uuid)
 
+    def set_disconnected_callback(self, cb):
+        # 透传 bleak 的设备侧断开回调（关机/超距触发），供 BleTransport 检测断线。
+        self._c.set_disconnected_callback(cb)
+
     async def write_gatt_char(self, uuid, data, response: bool = False):
         await self._c.write_gatt_char(uuid, data, response=response)
 
@@ -143,6 +147,11 @@ class BleTransport:
 
     async def _connect(self) -> None:
         self._client = self._client_factory(self._address)
+        # 注册设备侧断开回调（T2-B1）：在 connect 之前注册，连接刚建立即断开也不漏回调。
+        # getattr 防御：测试 fake / 老客户端未实现该接口时跳过。
+        set_disconnected = getattr(self._client, "set_disconnected_callback", None)
+        if set_disconnected is not None:
+            set_disconnected(self._on_disconnected)
         await self._client.connect()
         # 连上后的就绪步骤任一失败都属"半开链路"：先断开(吞异常)再上抛，
         # 避免残留 BLE 链路占用设备导致后续重连持续失败。
@@ -174,6 +183,14 @@ class BleTransport:
             except Exception:
                 pass
             raise
+
+    def _on_disconnected(self, *args) -> None:
+        """bleak disconnected 回调（在事件循环线程执行）：设备侧断开（关机/超距）时
+        置 _connected=False，is_open 如实反映链路状态。幂等：正常 close 后回调再触发
+        也只是再次置 False，无副作用。置位经锁串行化，与 Task 7 数据通路锁一致。"""
+        _ble_log(f"设备断开回调触发 address={self._address}")
+        with self._lock:
+            self._connected = False
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
@@ -232,6 +249,9 @@ class BleTransport:
             self._run(self._write(data))
         except Exception as e:
             _ble_log(f"write 失败: {e!r}")
+            # 写失败通常意味着链路已断（设备关机/超距），同步置位让 is_open 反映真实状态。
+            with self._lock:
+                self._connected = False
             raise
         return len(data)
 

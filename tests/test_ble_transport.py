@@ -348,3 +348,43 @@ def test_reconnect_queue_rebuild_no_byte_loss():
         assert t.read_byte(timeout=1.0) == 0xBB
     finally:
         t.close()
+
+
+def test_disconnect_callback_marks_not_open():
+    """T2-B1 确定性回归：设备侧断开（关机/超距）触发 bleak disconnected 回调后，
+    is_open 必须反映真实链路状态。修复前 _connected 不随设备侧断开更新，
+    is_open 仍返回 True，上层误判链路健康。
+    """
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    try:
+        assert t.is_open is True
+        client.simulate_disconnect()   # 设备侧断开 -> 触发 disconnected 回调
+        assert t.is_open is False, "设备侧断开后 is_open 应为 False"
+    finally:
+        t.close()
+
+
+def test_write_failure_marks_not_open():
+    """T2-B1：write 抛异常（如设备断连导致 GATT 写失败）时同步置 _connected=False，
+    is_open 随之变 False，避免上层继续按健康链路写入。
+    """
+    import pytest
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+
+    async def boom(uuid, data, response=False):
+        raise OSError("device gone")
+
+    client.write_gatt_char = boom
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    try:
+        assert t.is_open is True
+        with pytest.raises(OSError):
+            t.write(b"data")
+        assert t.is_open is False, "write 异常后 is_open 应为 False"
+    finally:
+        t.close()

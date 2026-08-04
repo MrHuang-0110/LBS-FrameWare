@@ -80,6 +80,7 @@ class FakeBleClient:
         self.is_connected = False
         self._cb = None
         self._pump = None
+        self._disc_cb = None
         self.services = [
             FakeBleChar(notify_uuid, ["notify"]),
             FakeBleChar(write_uuid, ["write", "write-without-response"]),
@@ -87,6 +88,16 @@ class FakeBleClient:
 
     def get_characteristics(self):
         return [(ch.uuid, ch.properties) for ch in self.services]
+
+    def set_disconnected_callback(self, cb):
+        """与 bleak 同名接口对齐：注册设备侧断开回调（模拟设备关机/超距）。"""
+        self._disc_cb = cb
+
+    def simulate_disconnect(self):
+        """模拟设备侧断开：置 is_connected=False 并触发已注册的 disconnected 回调。"""
+        self.is_connected = False
+        if self._disc_cb is not None:
+            self._disc_cb()
 
     async def connect(self):
         self.is_connected = True
