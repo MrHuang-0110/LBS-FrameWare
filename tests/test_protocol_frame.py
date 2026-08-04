@@ -1,3 +1,5 @@
+import pytest
+
 from lbs_firmware_studio.backend.protocol_frame import (
     HEADER, SOURCE, DEST, FOOTER, CMD_RESET, CMD_ACK, CMD_FILE_START,
     FOLDER_CMD_MAP, calculate_checksum, build_frame, parse_frame,
@@ -52,3 +54,8 @@ def test_run_toggle_frame_matches_device_protocol():
 
 def test_run_toggle_cmd_value():
     assert CMD_RUN_TOGGLE == 0xB6
+
+
+def test_build_frame_rejects_str_data():
+    with pytest.raises(TypeError, match="必须是 bytes"):
+        build_frame(0x01, "hello")

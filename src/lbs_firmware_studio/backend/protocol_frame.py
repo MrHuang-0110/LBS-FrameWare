@@ -30,6 +30,8 @@ def calculate_checksum(data: bytes) -> int:
 
 
 def build_frame(cmd: int, data: bytes = b"") -> bytes:
+    if not isinstance(data, bytes):
+        raise TypeError(f"build_frame data 必须是 bytes，收到 {type(data).__name__}")
     if len(data) > MAX_DATA_LEN:
         raise ValueError(f"data too long: {len(data)} > {MAX_DATA_LEN}")
     head = bytes([HEADER, SOURCE, DEST, len(data), cmd]) + data
