@@ -351,6 +351,8 @@ git commit -m "fix: ble_transport 重连不再重建队列，消除丢字节窗�
 
 ### Task 9: 修复 R5 —— ble_scanner 在已有事件循环线程调用不再抛 RuntimeError
 
+> ⚠️ **审查修正（Task 2，T2-SC1 结论）**：本任务标记为**非问题**——scan() 的两个生产调用路径（GUI `_ScanWorker` QThread、BLE 重连兜底 DeployWorker QThread）均是无 asyncio 事件循环的后台线程，Qt exec 也不是 asyncio loop，现有路径不会触发 RuntimeError。**跳过实现**；问题清单已按"非问题（附理由）"记录。若后续出现新调用路径需复查。此任务保留仅用于记录该决定。
+
 **Files:**
 - Modify: `src/lbs_firmware_studio/backend/ble_scanner.py:38`
 - Test: `tests/test_ble_scanner.py`（追加）
@@ -522,6 +524,8 @@ git commit -m "fix: serial_transport RX 循环持续读错误时退出，防无�
 ---
 
 ### Task 13: 修复 R9 —— serial_transport _serial 为 None 时防御
+
+> ⚠️ **审查修正（Task 2，T2-S6 结论）**：本任务标记为**非问题**——生产路径必有 pyserial（走 :155 分支），`SerialTransport(None)` 仅测试注入可达且已有 except 防御不崩溃。**跳过实现**；问题清单已按"非问题（附理由）"记录。可选改进（提可诊断性）已在清单注明，不做强制修复。
 
 **Files:**
 - Modify: `src/lbs_firmware_studio/backend/serial_transport.py:157`
@@ -706,3 +710,134 @@ Expected: 无冲突合并成功；日常开发回到 `main-work`。
 - **Spec 覆盖**：4.1 范围（12 文件）→ Task 2/3/4 全覆盖；4.2 流程（审查分级→3 批→每批 pytest 全绿→子 agent 实施+复审→TDD）→ Task 2-15 对应；4.3 红线（协议字节一致、五文件影响面、不重踩已知坑）→ Global Constraints；4.4 验收（问题清单关闭 + pytest 全绿）→ Task 16/17。
 - **占位符扫描**：无 TBD/TODO；Task 5-15 均有失败测试代码与实现要点（实现要点依赖实施时读取目标文件现状，属审查类任务的合理粒度）。
 - **类型一致性**：所有修复任务引用的 API 签名（`CustomFrameProtocol(log_cb=...)`、`scan(timeout, discover)`、`compile_py(py_path, out_path, compiler_path, cwd)`、`build_frame(cmd, data)`、`MonitorParser.feed(data)`、`DeviceProfile`/`_to_bytes`）均来自 explore 摸底结果，Task 间无签名冲突。
+
+---
+
+## 补充修复任务（审查新增，Task 18-25）
+
+> 批次 1-3 审查（Task 2/3/4）发现的新问题，按严重度排序追加。修复原则同前：TDD、不改变协议字节行为、不改变公开接口签名、每任务 pytest 全绿。
+
+### Task 18: 修复 T2-B1 (major) —— BLE 断线检测缺失
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/ble_transport.py`（`_RealBleakClient`/`_connect`/write 路径，:165-174 附近）
+- Test: `tests/test_ble_transport.py`（追加）
+
+**Interfaces:** `BleTransport.is_open` 属性、`_connected` 标志。
+
+- [ ] **Step 1: 写失败测试**：`test_disconnect_callback_marks_not_open()` —— 模拟 bleak client 触发 disconnected 回调后，断言 `transport.is_open` 变为 False（当前 `_connected` 不随设备侧断开更新，断言失败）。
+- [ ] **Step 2: 运行确认失败**：`python -m pytest tests/test_ble_transport.py::test_disconnect_callback_marks_not_open -v` → FAIL。
+- [ ] **Step 3: 实现**：`_RealBleakClient` 暴露 bleak 的 `set_disconnected_callback`；`_connect` 注册回调（置 `_connected=False` + 日志）；write 抛异常时同步置 `_connected=False`。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_ble_transport.py -v` → PASS（含既有 13 测试）。
+- [ ] **Step 5: 提交**：`git commit -m "fix: ble_transport 断线检测（disconnected 回调 + write 异常置 False）"`
+
+### Task 19: 修复 T2-B2 (major) —— close() 主线程同步等待 10s+2s
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/ble_transport.py`（close/`_run(self._disconnect())`/`_stop_loop`，:271-278/:288-294）
+- Test: `tests/test_ble_transport.py`（追加）
+
+**Interfaces:** `BleTransport.close()` 幂等可重入。
+
+- [ ] **Step 1: 写失败测试**：`test_close_is_idempotent_and_fast()` —— 已断开场景连续调 close() 两次不抛错、单次 close 不阻塞超过阈值（如 3s）。
+- [ ] **Step 2: 运行确认失败**：`python -m pytest tests/test_ble_transport.py::test_close_is_idempotent_and_fast -v` → FAIL。
+- [ ] **Step 3: 实现**：断开超时降至 2-3s（Task 18 修好后设备已断时 `_disconnect` 快速返回）；close 增加幂等守卫（已关闭直接返回）；记录断开等待放后台线程的选项供 GUI 侧使用。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_ble_transport.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: ble_transport close 幂等且缩短断开等待"`
+
+### Task 20: 修复 T3-T3 (major/待定) —— YMODEM seq 回绕对齐 mod-256
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/transfer_protocol.py`（:165/:172 seq 计算）
+- Modify: `tests/simulator.py`（:178 附近加 seq 校验，模拟真机校验行为）
+- Test: `tests/test_ymodem_protocol.py`（追加）
+
+**Interfaces:** YMODEM 发送 seq 序列。
+
+- [ ] **Step 1: 写失败测试**：`test_seq_wraps_256_not_skip_0()` —— 构造跨越 255 块边界的发送（可用小 block_size + 伪造超长数据或直接测 seq 计算），断言第 255 块后 seq 为 0 而非 1。同时给 simulator 加 seq 校验（不匹配回 NAK），使现有 YMODEM 测试在修复前失败。
+- [ ] **Step 2: 运行确认失败**：`python -m pytest tests/test_ymodem_protocol.py -v` → FAIL。
+- [ ] **Step 3: 实现**：`seq = (seq + 1) & 0xFF`（起始 seq 保持 1）；simulator 校验 seq 连续性。⚠️ 需真机确认：若真机不校验 seq，此项属防御性对齐标准；改动不改变真机已成功路径的字节序列（255→1 仅在 >255KB 大固件触发，现网 NEXT-AI 单 bin 不触发）。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_ymodem_protocol.py tests/test_ble_ymodem_script_repro.py tests/test_worker.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: YMODEM seq 回绕 255→0 对齐 mod-256（模拟器加 seq 校验）"`
+
+### Task 21: 修复 T2-S3+T2-B9 —— handler 调用异常保护（serial + ble）
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/serial_transport.py`（:104-108）
+- Modify: `src/lbs_firmware_studio/backend/ble_transport.py`（:165-171）
+- Test: `tests/test_serial_transport.py`、`tests/test_ble_transport.py`（追加）
+
+**Interfaces:** `set_data_handler(handler)` 回调语义。
+
+- [ ] **Step 1: 写失败测试**：`test_handler_exception_does_not_kill_rx_thread()`（serial）—— handler 抛异常后 RX 线程仍存活且后续数据仍可达；BLE 版同理（handler 抛异常不中断后续 notify）。
+- [ ] **Step 2: 运行确认失败**：两个测试 → FAIL（当前线程死亡/字节丢失）。
+- [ ] **Step 3: 实现**：两处 handler 调用包 try/except，记录日志（serial 用现有日志通道，ble 用 `_ble_log`）后继续。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_serial_transport.py tests/test_ble_transport.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: serial/ble data_handler 异常不杀线程（记日志继续）"`
+
+### Task 22: 修复 T2-S4+T2-S5 —— serial write 前置检查与枚举异常保护
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/serial_transport.py`（:61-64 write、:29-35 `_port_present`）
+- Test: `tests/test_serial_transport.py`（追加）
+
+**Interfaces:** `SerialTransport.write(data) -> int`；`wait_for_reopen` 语义。
+
+- [ ] **Step 1: 写失败测试**：`test_write_after_close_raises_clear_error()`（close 后 write 抛 RuntimeError 含"未打开"提示）；`test_port_present_exception_contained()`（comports 抛错时 wait_for_reopen 不冒泡，按失败返回 False）。
+- [ ] **Step 2: 运行确认失败**：→ FAIL。
+- [ ] **Step 3: 实现**：write 前检查 `self.is_open`；`_port_present` 内 try/except 记日志返回 False。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_serial_transport.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: serial write 前置 is_open 检查 + 枚举异常保护"`
+
+### Task 23: 修复 T3-T5 —— FOLDER_CMD_MAP 未知文件夹命令防御
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/transfer_protocol.py`（:44 附近 FOLDER_CMD_MAP 索引）
+- Test: `tests/test_custom_frame_protocol.py`（追加）
+
+**Interfaces:** `CustomFrameProtocol` 文件夹命令映射。
+
+- [ ] **Step 1: 写失败测试**：`test_unknown_folder_raises_clear_error()` —— 传入 FOLDER_CMD_MAP 未覆盖的文件夹名，断言抛带文件夹名的清晰异常而非裸 KeyError。
+- [ ] **Step 2: 运行确认失败**：→ FAIL（KeyError）。
+- [ ] **Step 3: 实现**：`FOLDER_CMD_MAP.get(folder, ...)` 显式校验并抛 `ValueError(f"未知文件夹命令: {folder}")`；确认 `deployer` 调用方对缺失目录的过滤与之配合（T4-D2）。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_custom_frame_protocol.py tests/test_deployer.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: FOLDER_CMD_MAP 未知文件夹抛清晰异常"`
+
+### Task 24: 修复 T4-D1+D2+D6 —— deployer 固件目录校验与缺失告警
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/deployer.py`（:78-86）
+- Test: `tests/test_deployer.py`（追加）
+
+**Interfaces:** `DeviceDeployer.update_firmware(profile, port)`。
+
+- [ ] **Step 1: 写失败测试**：
+  - `test_ymodem_firmware_dir_requires_exactly_one_file()` —— YMODEM 路径目录为空/多文件时抛清晰异常（NEXT-AI `[__single__]` 约定：恰好一个 bin）；
+  - `test_custom_frame_missing_folder_logs_warning()` —— custom_frame 路径某 folders 目录缺失时经 log 信号告警而非静默跳过；
+  - `test_custom_frame_empty_folders_not_done()` —— 全部目录缺失/为空时不报"完成"。
+- [ ] **Step 2: 运行确认失败**：→ FAIL（当前单文件静默取首、缺失静默跳过、空会话报 done）。注意 test_deployer.py 现有断言（:80-102）可能依赖旧语义，实施时同步调整。
+- [ ] **Step 3: 实现**：YMODEM 路径校验 glob 恰好 1 个文件；custom_frame 路径缺失目录经 `log` 信号告警；空会话发 error 而非 done。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_deployer.py tests/test_worker.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: deployer 固件目录校验与缺失告警（防静默误报完成）"`
+
+### Task 25: 修复 T4-D3+T4-D5 —— deployer Signal 桩补全 + run_firmware 防双错误框
+
+**Files:**
+- Modify: `src/lbs_firmware_studio/backend/deployer.py`（:4-13 桩）
+- Modify: `src/lbs_firmware_studio/gui/worker.py`（:51-59 run_firmware）
+- Test: `tests/test_worker.py`、`tests/test_deployer.py`（追加）
+
+**Interfaces:** `DeviceDeployer.progress/log/state_changed/error` 信号（PySide6 缺失桩环境 CLI/测试路径）；`DeployWorker` 错误回调。
+
+- [ ] **Step 1: 写失败测试**：`test_run_firmware_no_double_error()`（参照 `test_run_script_no_double_error_on_deploy_failure` 断言模式：`len(errors)==1` 且无误导前缀）；`test_signal_stub_multiple_connect()`（桩支持多 connect 不覆盖）。
+- [ ] **Step 2: 运行确认失败**：→ FAIL。
+- [ ] **Step 3: 实现**：deployer 桩 `Signal` 改为保存连接列表（emit 全部）；worker run_firmware 参照 run_script 的 `opened` 标志防重复补发 error。
+- [ ] **Step 4: 验证通过**：`python -m pytest tests/test_worker.py tests/test_deployer.py -v` → PASS。
+- [ ] **Step 5: 提交**：`git commit -m "fix: deployer 桩支持多连接 + run_firmware 防双错误框"`
+
+---
+
+## Self-Review 补充（审查后追加）
+
+- **Spec 4.2 流程**：审查产出与计划任务联动（R5/R9 判非问题跳过并记录；新发现 8 项追加为 Task 18-25）。Task 2/3/4 各自产出问题清单并经 task reviewer 两裁决通过。
+- **类型一致性**：补充任务引用的接口（`set_disconnected_callback`、`FOLDER_CMD_MAP`、`update_firmware`、`DeployWorker`/`run_firmware`）均来自审查实测，与现有代码一致。
