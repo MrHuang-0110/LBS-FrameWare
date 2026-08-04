@@ -364,6 +364,9 @@ def test_disconnect_callback_marks_not_open():
         client.simulate_disconnect()   # 设备侧断开 -> 触发 disconnected 回调
         assert t.is_open is False, "设备侧断开后 is_open 应为 False"
     finally:
+        # 设备侧断开后 _connected 为 False，close() 守卫跳过 disconnect，fake pump 不会
+        # 被取消 -> 事件循环 GC 时泄漏 asyncio 任务。先显式 disconnect 取消 pump 再 close。
+        t._run(client.disconnect())
         t.close()
 
 
@@ -387,4 +390,7 @@ def test_write_failure_marks_not_open():
             t.write(b"data")
         assert t.is_open is False, "write 异常后 is_open 应为 False"
     finally:
+        # 同上：write 异常已置 _connected=False，close() 不会走 disconnect，
+        # 需先显式 disconnect 取消 fake pump，避免 asyncio 任务泄漏警告。
+        t._run(client.disconnect())
         t.close()
