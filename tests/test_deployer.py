@@ -1,4 +1,5 @@
 import pathlib, tempfile
+import pytest
 from lbs_firmware_studio.backend.profile import DeviceProfile
 from lbs_firmware_studio.backend.deployer import DeviceDeployer
 from lbs_firmware_studio.backend.serial_transport import SerialTransport
@@ -116,3 +117,89 @@ def test_ymodem_block_size_128_over_ble_1024_over_serial():
     assert ble_proto.block_size == 128
     ser_proto = DeviceDeployer(transport=_FakeLink("serial"))._make_protocol(prof)
     assert ser_proto.block_size == 1024
+
+
+def test_ymodem_firmware_dir_requires_exactly_one_file():
+    """NEXT-AI 单文件约定（folders=[__single__]）：固件目录空/多文件时抛清晰异常，不发 done。
+    review T4-D1/D6：sorted(glob) 取第一个文件零防御，目录空/多文件静默误报 done。"""
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="ymodem"); sim.start()
+    t = SerialTransport(host_ser); t.start_rx()
+    try:
+        dep = DeviceDeployer(transport=t)
+        with tempfile.TemporaryDirectory() as d:
+            prof = _profile("NEXT-AI", "ymodem")
+            prof.firmware_dir = pathlib.Path(d)   # 空目录：零文件
+            errors, states = [], []
+            dep.error.connect(lambda e: errors.append(e))
+            dep.state_changed.connect(lambda s: states.append(s))
+            with pytest.raises(RuntimeError, match="单文件约定"):
+                dep.update_firmware(prof, "COM_FAKE")
+            assert errors and "done" not in states
+            # 多文件：单文件约定被破坏，不得静默取第一个
+            (pathlib.Path(d) / "a.bin").write_bytes(b"\xAA" * 32)
+            (pathlib.Path(d) / "b.bin").write_bytes(b"\xBB" * 32)
+            errors.clear(); states.clear()
+            with pytest.raises(RuntimeError, match="单文件约定"):
+                dep.update_firmware(prof, "COM_FAKE")
+            assert errors and "done" not in states
+    finally:
+        t.stop_rx(); sim.stop()
+
+
+def test_custom_frame_missing_folder_logs_warning():
+    """custom_frame 某 folders 目录缺失：经 log 信号告警而非静默跳过，其余目录照常发送。
+    review T4-D2：if sub.exists() 静默跳过缺失目录，用户误以为全部已升级。"""
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="custom_frame"); sim.start()
+    def reopen_factory(port, baud):
+        host_ser.is_open = True
+        return host_ser
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory); t.start_rx()
+    try:
+        dep = DeviceDeployer(transport=t)
+        with tempfile.TemporaryDirectory() as d:
+            app = pathlib.Path(d) / "app"; app.mkdir()
+            (app / "0.o").write_bytes(b"app data")
+            prof = _profile("NEW-AI", "custom_frame")
+            prof.firmware_dir = pathlib.Path(d)
+            prof.folders = ["app", "music"]   # music 目录缺失
+            logs, states, errors = [], [], []
+            dep.log.connect(lambda m: logs.append(m))
+            dep.state_changed.connect(lambda s: states.append(s))
+            dep.error.connect(lambda e: errors.append(e))
+            dep.update_firmware(prof, "COM_FAKE")
+            assert sim.received_files.get("0.o") == b"app data"
+            assert any("music" in m and "缺失" in m for m in logs)
+            assert "done" in states and not errors
+    finally:
+        t.stop_rx(); sim.stop()
+
+
+def test_custom_frame_empty_folders_not_done():
+    """folders 目录全部缺失/为空：发 error 而非 done（空会话不再静默报完成）。
+    review T4-D2：全部缺失时仅 enter->reconnect->空 finish_session 仍报 done。"""
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="custom_frame"); sim.start()
+    def reopen_factory(port, baud):
+        host_ser.is_open = True
+        return host_ser
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory); t.start_rx()
+    try:
+        dep = DeviceDeployer(transport=t)
+        with tempfile.TemporaryDirectory() as d:
+            prof = _profile("NEW-AI", "custom_frame")
+            prof.firmware_dir = pathlib.Path(d)   # 无任何 folders 子目录
+            errors, states = [], []
+            dep.error.connect(lambda e: errors.append(e))
+            dep.state_changed.connect(lambda s: states.append(s))
+            with pytest.raises(RuntimeError):
+                dep.update_firmware(prof, "COM_FAKE")
+            assert errors and "done" not in states and "error" in states
+            # 目录存在但为空：同样不得报 done
+            app = pathlib.Path(d) / "app"; app.mkdir()
+            with pytest.raises(RuntimeError):
+                dep.update_firmware(prof, "COM_FAKE")
+            assert "done" not in states and "error" in states
+    finally:
+        t.stop_rx(); sim.stop()
