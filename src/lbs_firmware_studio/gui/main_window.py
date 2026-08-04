@@ -184,7 +184,9 @@ class MainWindow(QWidget):
     def _run_deploy(self, page, run_slot_name: str, **job_kwargs):
         """统一的下发接线：守卫→建 transport/deployer→接线→moveToThread→start。
         page 为当前忙碌页(进度/日志回调目标)，run_slot_name 为 worker 上的直连无参运行槽。"""
+        print(f"[DEBUG] _run_deploy: _busy={self._busy}, thread_alive={self._thread is not None and self._thread.isRunning()}")
         if self._busy or (self._thread is not None and self._thread.isRunning()):
+            print(f"[DEBUG] _run_deploy: BLOCKED - busy or thread still running")
             return
         port = self._conn.selected_target()
         if not port:

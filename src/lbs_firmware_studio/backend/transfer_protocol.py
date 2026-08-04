@@ -144,7 +144,9 @@ class YmodemProtocol(TransferProtocol):
             cmd = enter_cmd
         else:
             cmd = b"ymodem update fmware\r\n" if firmware else b"ymodem\r\n"
+        print(f"[DEBUG] Ymodem.enter_upgrade: writing {cmd!r} ({len(cmd)}B)")
         t.write(cmd)
+        print(f"[DEBUG] Ymodem.enter_upgrade: write done")
 
     def send_file(self, t: SerialTransport, path: Path, on_progress: ProgressCb, *, firmware: bool) -> None:
         data = path.read_bytes()
@@ -178,6 +180,7 @@ class YmodemProtocol(TransferProtocol):
     def _send_packet_wait(self, t: SerialTransport, pkt: bytes, *, firmware: bool) -> None:
         for attempt in range(self.max_retries):
             t.write(pkt)
+            print(f"[DEBUG] _send_packet_wait: {len(pkt)}B sent, waiting for ACK")
             try:
                 self._wait_control(t, ym.ACK, self.ack_timeout, firmware=firmware)
                 return
@@ -204,6 +207,7 @@ class YmodemProtocol(TransferProtocol):
     def _wait_control(self, t: SerialTransport, expected: int, timeout: float, *, firmware: bool) -> None:
         """容错等待控制字节：跳过可打印字符（JSON 干扰），忽略杂散 'C'（除非期望 'C'）。"""
         deadline = time.monotonic() + timeout
+        skipped = 0
         while time.monotonic() < deadline:
             b = t.read_byte(timeout=max(0.05, deadline - time.monotonic()))
             if b is None:
@@ -211,10 +215,15 @@ class YmodemProtocol(TransferProtocol):
             if b == ym.CAN:
                 raise RuntimeError("device cancelled (CAN)")
             if b == expected:
+                print(f"[DEBUG] _wait_control: got expected 0x{expected:02X} after {skipped} skipped bytes")
                 return
             if b == ym.CRC_C and expected != ym.CRC_C:
+                skipped += 1
                 continue  # 忽略杂散 'C'
             if 0x20 <= b <= 0x7E:
+                skipped += 1
                 continue  # 跳过可打印 JSON 字符
             # 其它非期望控制字节：继续等
+            skipped += 1
+        print(f"[DEBUG] _wait_control: timeout waiting for 0x{expected:02X} after {skipped} skipped bytes")
         raise TimeoutError(f"timeout waiting for 0x{expected:02X}")
