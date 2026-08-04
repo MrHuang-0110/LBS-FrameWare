@@ -43,20 +43,22 @@ class DeployWorker(QObject):
     @Slot()
     def run_firmware(self) -> None:
         profile, port = self._profile, self._port
+        opened = False
         try:
             if self._owns_lifecycle:
                 self._transport.open(port, profile.baud)
             self._transport.start_rx()
+            opened = True
             self._deployer.update_firmware(profile, port)
         except Exception as e:
-            # open()/start_rx() 失败在 update_firmware 之前，deployer 尚未上报；此处补发，
-            # 使 MainWindow 的 _on_error 弹窗 + _on_state("error") 能触发。
-            # 若 update_firmware 自身抛出，它已先发过 error；再发一次无害。
-            try:
-                self._deployer.error.emit(f"打开串口失败: {e}")
-                self._deployer.state_changed.emit("error")
-            except Exception:
-                pass
+            # open/start_rx 阶段失败时 deployer 尚未上报，需补发；
+            # update_firmware 自身失败已 emit 过 error，不再重复补发（避免 GUI 弹两次错误框）。
+            if not opened:
+                try:
+                    self._deployer.error.emit(f"打开串口失败: {e}")
+                    self._deployer.state_changed.emit("error")
+                except Exception:
+                    pass
         finally:
             try:
                 if self._owns_lifecycle:

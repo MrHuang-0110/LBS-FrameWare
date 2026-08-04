@@ -203,3 +203,27 @@ def test_custom_frame_empty_folders_not_done():
             assert "done" not in states and "error" in states
     finally:
         t.stop_rx(); sim.stop()
+
+
+def test_signal_stub_multiple_connect(monkeypatch):
+    """PySide6 缺失降级 Signal 桩：多 connect 不覆盖，emit 触发全部回调。
+    review T4-D3：原桩 connect 只存单个 _fn，二次 connect 覆盖首个致回调丢失。
+    通过把 sys.modules["PySide6"] 置 None 强制 deployer 重新导入走 except 桩分支。"""
+    import importlib, sys
+    mod_name = "lbs_firmware_studio.backend.deployer"
+    saved = sys.modules.get(mod_name)
+    monkeypatch.setitem(sys.modules, "PySide6", None)   # 强制走桩分支
+    monkeypatch.setitem(sys.modules, "PySide6.QtCore", None)  # 否则 from PySide6.QtCore import Signal 直接取真实模块跳过桩
+    try:
+        if saved is not None:
+            sys.modules.pop(mod_name, None)
+        dep = importlib.import_module(mod_name)
+        got = []
+        sig = dep.Signal(str)
+        sig.connect(lambda s: got.append(("a", s)))
+        sig.connect(lambda s: got.append(("b", s)))
+        sig.emit("hi")
+        assert got == [("a", "hi"), ("b", "hi")]
+    finally:
+        if saved is not None:
+            sys.modules[mod_name] = saved

@@ -193,3 +193,31 @@ def test_run_script_no_double_error_on_deploy_failure(qtbot):
             assert "compile boom" in errors[0]
     finally:
         t.stop_rx()
+
+
+def test_run_firmware_no_double_error(qtbot):
+    # open 成功但 update_firmware 内部失败（已 emit error 后 raise）：
+    # run_firmware 不应再补发 -> error 恰好 1 条，且无误导前缀。
+    # review T4-D5：原 run_firmware 无条件补发，部署失败时 MainWindow 弹两次错误框。
+    class OkTransport:
+        def open(self, port, baud):
+            pass
+        def start_rx(self):
+            pass
+        def close(self):
+            pass
+    t = OkTransport()
+    with tempfile.TemporaryDirectory() as d:
+        dep = DeviceDeployer(t)
+        def failing_update(profile, port):
+            dep.error.emit("deploy boom")
+            raise RuntimeError("deploy boom")
+        dep.update_firmware = failing_update
+        worker = DeployWorker(t, dep)
+        errors = []
+        dep.error.connect(lambda e: errors.append(e))
+        with qtbot.waitSignal(worker.finished, timeout=5000):
+            worker.set_job(_profile(d), "COM_FAKE"); worker.run_firmware()
+        assert len(errors) == 1  # 只上报 1 条，无重复
+        assert not any("打开串口失败" in e for e in errors)  # 无误导前缀
+        assert "deploy boom" in errors[0]

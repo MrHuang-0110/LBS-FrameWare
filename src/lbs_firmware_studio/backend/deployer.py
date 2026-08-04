@@ -7,10 +7,10 @@ except ImportError:  # 后端可脱离 PySide6 运行（CLI/测试）
     class QObject:  # type: ignore
         def __init__(self, *a, **k): pass
     class Signal:  # type: ignore
-        def __init__(self, *a, **k): pass
-        def connect(self, fn): self._fn = fn
+        def __init__(self, *a, **k): self._fns = []
+        def connect(self, fn): self._fns.append(fn)
         def emit(self, *a, **k):
-            if hasattr(self, "_fn"): self._fn(*a, **k)
+            for fn in self._fns: fn(*a, **k)
 
 from .transfer_protocol import CustomFrameProtocol, YmodemProtocol
 from .pika_compiler import compile_py
