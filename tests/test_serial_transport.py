@@ -234,3 +234,38 @@ def test_wait_for_reopen_no_post_delay_when_zero(monkeypatch):
                            disappear_timeout=0.0)
     assert ok is True
     assert 0.0 not in slept  # post_delay=0 不触发额外 sleep(0)
+
+
+def test_handler_exception_does_not_kill_rx_thread():
+    """T2-S3：data_handler 抛异常不得杀死 RX 线程（daemon），后续数据仍可达。
+    修复前异常冒出 _rx_loop -> daemon RX 线程死亡 -> 无任何迹象、后续字节丢失。
+    注意：handler 异常是「记日志继续」，不得计入 T2-S1 的 read 连续错误阈值。"""
+    import time
+    host_ser, dev_ser = make_fake_serial_pair()
+    t = SerialTransport(host_ser)
+    received = []
+    calls = {"n": 0}
+
+    def flaky_handler(data):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("handler boom")
+        received.append(data)
+
+    t.set_data_handler(flaky_handler)
+    t.start_rx()
+    try:
+        dev_ser.write(b"\x00")   # 触发第一次 handler 调用 -> 抛异常
+        deadline = time.monotonic() + 1.0
+        while calls["n"] < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert calls["n"] >= 1, "第一次 handler 调用应已发生"
+        dev_ser.write(b"\x01\x02\x03")   # 后续数据：handler 应正常收集
+        deadline = time.monotonic() + 1.0
+        while b"".join(received) != b"\x01\x02\x03" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert calls["n"] >= 2, "handler 应至少被调用两次(首抛异常+后续正常)"
+        assert b"".join(received) == b"\x01\x02\x03", "handler 异常后后续数据仍应可达"
+        assert t._thread is not None and t._thread.is_alive(), "handler 异常后 RX 线程应仍存活"
+    finally:
+        t.stop_rx()

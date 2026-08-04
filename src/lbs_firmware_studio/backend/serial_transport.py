@@ -119,7 +119,14 @@ class SerialTransport:
             if not chunk:
                 continue
             if self._data_handler is not None:
-                self._data_handler(bytes(chunk))
+                try:
+                    self._data_handler(bytes(chunk))
+                except Exception as exc:
+                    # 回调异常不得杀死 RX 线程（T2-S3）：记日志后继续。该异常属于
+                    # 上层 handler 的缺陷，与 T2-S1 的 read 硬件异常计数相互独立，
+                    # 不递增 consecutive_errors（那是串口读错误阈值，handler 异常
+                    # 只是「丢一次回调」而非链路损坏）。
+                    _logger.warning("数据回调异常(已忽略，RX 线程继续): %r", exc)
             else:
                 for b in chunk:
                     self._rx_queue.put(b)

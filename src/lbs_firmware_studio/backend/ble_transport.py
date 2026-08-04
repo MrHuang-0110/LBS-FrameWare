@@ -208,7 +208,11 @@ class BleTransport:
                 _ble_log(f"notify recv {len(b)}B mode={'handler' if handler else 'queue'} "
                          f"hex={_hex_preview(b)}")
             if handler is not None:
-                handler(b)
+                try:
+                    handler(b)
+                except Exception as exc:
+                    # 回调异常不得中断后续 notify 处理（T2-B9）：记录后继续。
+                    _ble_log(f"notify handler 异常(已忽略): {exc!r}")
             else:
                 for byte in b:
                     rx_queue.put(byte)

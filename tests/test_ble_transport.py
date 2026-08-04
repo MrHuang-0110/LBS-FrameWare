@@ -448,3 +448,40 @@ def test_close_is_idempotent_and_fast():
     finally:
         t2.close()   # 幂等：已关闭后再次 close 不抛错
         assert t2._loop is None and t2._loop_thread is None
+
+
+def test_handler_exception_does_not_interrupt_notify():
+    """T2-B9：_on_notify 里 data_handler 抛异常不得中断后续 notify 处理。
+    修复前异常从 fake pump 的 cb 调用冒泡 -> pump 的 asyncio 任务终止 ->
+    后续设备字节不再回调（静默丢失）。"""
+    import time as _t
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    received = []
+    calls = {"n": 0}
+
+    def flaky_handler(data):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("handler boom")
+        received.append(data)
+
+    t.open("addr")
+    t.set_data_handler(flaky_handler)
+    t.start_rx()
+    try:
+        dev.write(b"\x00")   # 第一次 notify -> handler 抛异常
+        deadline = _t.monotonic() + 1.0
+        while calls["n"] < 1 and _t.monotonic() < deadline:
+            _t.sleep(0.01)
+        assert calls["n"] >= 1, "第一次 notify 应已处理"
+        dev.write(b"\x01\x02\x03")   # 后续 notify：应继续被处理
+        deadline = _t.monotonic() + 1.0
+        while b"".join(received) != b"\x01\x02\x03" and _t.monotonic() < deadline:
+            _t.sleep(0.01)
+        assert calls["n"] >= 2, "notify 应至少处理两次(首次异常+后续正常)"
+        assert b"".join(received) == b"\x01\x02\x03", "handler 异常后后续 notify 仍应被处理"
+    finally:
+        t.stop_rx()
+        t.close()
