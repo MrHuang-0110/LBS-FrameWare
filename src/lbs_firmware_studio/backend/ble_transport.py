@@ -109,6 +109,9 @@ class BleTransport:
         self._client_factory = client_factory or _default_client_factory
         self._scanner = scanner
         self._reconnect_name = reconnect_name
+        # 跨线程数据通路锁：_on_notify(事件循环线程) 与 set_data_handler/_try_connect(主线程)
+        # 对 _data_handler/_rx_queue 的读写全部经此锁串行化(RLock 防 handler 内重入)。
+        self._lock = threading.RLock()
         self._address: str | None = None
         self._client = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -164,27 +167,31 @@ class BleTransport:
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
-        if _BLE_DEBUG_ENABLED:
-            _ble_log(f"notify recv {len(b)}B mode={'handler' if self._data_handler else 'queue'} "
-                     f"hex={_hex_preview(b)}")
-        if self._data_handler is not None:
-            self._data_handler(b)
-        else:
-            for byte in b:
-                self._rx_queue.put(byte)
+        with self._lock:
+            handler = self._data_handler
+            rx_queue = self._rx_queue
+            if _BLE_DEBUG_ENABLED:
+                _ble_log(f"notify recv {len(b)}B mode={'handler' if handler else 'queue'} "
+                         f"hex={_hex_preview(b)}")
+            if handler is not None:
+                handler(b)
+            else:
+                for byte in b:
+                    rx_queue.put(byte)
 
     @property
     def is_open(self) -> bool:
         return self._connected
 
     def set_data_handler(self, handler: "Callable[[bytes], None] | None") -> None:
-        self._data_handler = handler
-        if handler is not None:
-            while True:
-                try:
-                    self._rx_queue.get_nowait()
-                except queue.Empty:
-                    break
+        with self._lock:
+            self._data_handler = handler
+            if handler is not None:
+                while True:
+                    try:
+                        self._rx_queue.get_nowait()
+                    except queue.Empty:
+                        break
 
     def start_rx(self) -> None:
         # notify 在 _connect 时已订阅；此处仅为与 SerialTransport 对等的幂等钩子。
@@ -195,10 +202,13 @@ class BleTransport:
         pass
 
     def read_byte(self, timeout: float) -> int | None:
-        if self._data_handler is not None:
+        with self._lock:
+            handler = self._data_handler
+            rx_queue = self._rx_queue
+        if handler is not None:
             return None
         try:
-            return self._rx_queue.get(timeout=timeout)
+            return rx_queue.get(timeout=timeout)
         except queue.Empty:
             return None
 
@@ -262,7 +272,8 @@ class BleTransport:
         try:
             self._address = address
             self._run(self._connect())
-            self._rx_queue = queue.Queue()
+            with self._lock:
+                self._rx_queue = queue.Queue()
             return True
         except Exception:
             self._connected = False

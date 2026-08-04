@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from tests.fakes import make_fake_ble_pair
 
 
@@ -210,3 +211,103 @@ def test_connect_half_open_disconnects_client_on_failure():
     assert t.is_open is False
     assert client.disconnect_called is True   # 半开链路已清理
     t.close()
+
+
+def test_handler_switch_racing_notify_no_stranded_bytes():
+    """T2-B3 确定性回归：notify 线程(此处直接调 _on_notify)读到 queue 模式并入队，
+    与主线程 set_data_handler 切换（写 handler + 清空队列）交错时，切换完成后
+    队列必须保持干净，切换瞬间的字节不得滞留队列（handler 收不到、下次切换才被丢）：
+    - 修复前(无锁)：字节在 handler 已切换后仍入队滞留，qsize>0 —— 错路字节丢失
+    - 修复后(锁串行化)：要么先入队随后被整体清空(切换前数据)，要么读到新 handler 直达收集器
+    用 gated put 强制交错，确定性断言，无 sleep 竞态。
+    """
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")
+    t.set_data_handler(None)   # queue 模式
+
+    put_entered = threading.Event()
+    release_put = threading.Event()
+    orig_put = t._rx_queue.put
+
+    def gated_put(item):
+        put_entered.set()
+        release_put.wait(timeout=5.0)
+        return orig_put(item)
+
+    t._rx_queue.put = gated_put   # 只 gate 本实例的入队
+
+    errs = []
+
+    def notifier():
+        try:
+            t._on_notify(None, bytearray(b"\x41\x42"))
+        except Exception as e:
+            errs.append(e)
+
+    th = threading.Thread(target=notifier, daemon=True)
+    th.start()
+    assert put_entered.wait(timeout=5.0), "notify 应已进入入队路径"
+
+    collected = []
+    switched = threading.Event()
+
+    def do_switch():
+        try:
+            t.set_data_handler(collected.append)
+        except Exception as e:
+            errs.append(e)
+        finally:
+            switched.set()
+
+    sw = threading.Thread(target=do_switch, daemon=True)
+    sw.start()
+    release_put.set()   # 放行入队，制造「入队 <-> 清空队列」交错
+    th.join(timeout=5.0)
+    sw.join(timeout=5.0)
+
+    assert not errs, f"不应抛异常: {errs}"
+    assert switched.is_set(), "set_data_handler 必须完成"
+    assert t._rx_queue.qsize() == 0, \
+        f"handler 模式下队列不应滞留字节，实际 qsize={t._rx_queue.qsize()}"
+    t.close()
+
+
+def test_concurrent_notify_and_set_handler_no_corruption():
+    """并发压力：真实链路上写线程持续触发 notify，主线程反复切换 handler。
+    不抛异常；handler 模式下队列不滞留（切换瞬间无错路字节）；handler 收到的数据块完整。"""
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    received = []
+    stop = threading.Event()
+    errors = []
+
+    def writer():
+        try:
+            while not stop.is_set():
+                dev.write(b"\xAB" * 8)
+        except Exception as e:
+            errors.append(e)
+
+    t.open("addr")
+    t.set_data_handler(received.append)
+    w = threading.Thread(target=writer, daemon=True)
+    w.start()
+    try:
+        for _ in range(50):
+            t.set_data_handler(None)              # 切回 queue 模式
+            t.set_data_handler(received.append)   # 再挂 handler（清空残留）
+        stop.set()
+        w.join(timeout=5.0)
+        import time as _t
+        _t.sleep(0.2)   # 等泵把已写入的字节全部吐出
+        assert t._rx_queue.qsize() == 0, \
+            f"handler 模式下队列不应滞留字节，实际 qsize={t._rx_queue.qsize()}"
+        assert received, "handler 应收到数据"
+        assert all(b == b"\xAB" * len(b) for b in received), "数据块应完整无损坏"
+    finally:
+        stop.set()
+        t.close()
+    assert not errors, f"线程不应抛异常: {errors}"
