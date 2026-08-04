@@ -1,5 +1,6 @@
 """串口层：封装 pyserial，后台 RX 线程把字节路由给队列或数据回调。"""
 from __future__ import annotations
+import logging
 import threading, queue, time
 from typing import Callable
 
@@ -8,6 +9,12 @@ try:
     import serial.tools.list_ports
 except ImportError:  # 测试环境用 FakeSerial，pyserial 可能未装
     serial = None
+
+_logger = logging.getLogger("lbs_firmware_studio.backend.serial_transport")
+
+# 串口拔出/驱动错误时 in_waiting/read 会持续抛错；连续异常达此上限即退出 RX 线程，
+# 避免无日志 50ms 忙循环空转（审查项 T2-S1）。
+_RX_ERROR_RETRY_LIMIT = 3
 
 
 class SerialTransport:
@@ -86,6 +93,7 @@ class SerialTransport:
             self._thread = None
 
     def _rx_loop(self) -> None:
+        consecutive_errors = 0
         while not self._stop.is_set():
             try:
                 # 优先读缓冲区内「当前可用」的字节，有多少读多少，避免 read(64)
@@ -96,9 +104,18 @@ class SerialTransport:
                 else:
                     # 无数据时读 1 字节（受串口 timeout 限制）阻塞等待，不忙等
                     chunk = self._serial.read(1)
-            except Exception:
+            except Exception as exc:
+                # 串口拔出/驱动错误时 read 持续抛错：记录日志（不再静默），连续异常
+                # 达上限即退出，防无日志 50ms 忙循环空转（T2-S1）。偶发一次不退出。
+                consecutive_errors += 1
+                _logger.warning("串口 RX 读取异常(%d/%d): %r",
+                                consecutive_errors, _RX_ERROR_RETRY_LIMIT, exc)
+                if consecutive_errors >= _RX_ERROR_RETRY_LIMIT:
+                    _logger.error("串口 RX 连续读取异常 %d 次，RX 线程退出", consecutive_errors)
+                    break
                 time.sleep(0.05)
                 continue
+            consecutive_errors = 0  # 正常读到（含超时空数据）即重置连续错误计数
             if not chunk:
                 continue
             if self._data_handler is not None:

@@ -88,6 +88,68 @@ def test_rx_loop_reads_available_not_fixed_64(monkeypatch):
         t.stop_rx()
 
 
+def test_rx_loop_exits_on_persistent_read_error():
+    """T2-S1：串口拔出后 in_waiting/read 持续抛错，RX 线程应在连续异常达上限后退出，
+    而非无日志 50ms 忙循环空转。"""
+    import time
+
+    class UnpluggedSerial:
+        """模拟串口已拔出：in_waiting 与 read 均持续抛 OSError。"""
+        is_open = False
+        timeout = 0.01
+        dtr = False
+        rts = False
+
+        @property
+        def in_waiting(self):
+            raise OSError(22, "The device does not recognize the command")
+
+        def read(self, n=1):
+            raise OSError(22, "The device does not recognize the command")
+
+    t = SerialTransport(UnpluggedSerial())
+    t.start_rx()
+    # 不依赖精确 sleep：短超时轮询线程存活状态（避免 flaky）
+    deadline = time.monotonic() + 2.0
+    while (t._thread is None or t._thread.is_alive()) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert t._thread is not None and not t._thread.is_alive(), "RX 线程在持续读错误下仍存活(忙循环)"
+
+
+def test_rx_loop_recovers_after_transient_read_error():
+    """偶发一次读取异常不应退出线程（连续计数重置），恢复后正常收字节。"""
+    import time
+    host_ser, dev_ser = make_fake_serial_pair()
+
+    class FlakySerial:
+        is_open = True
+        timeout = 0.01
+
+        def __init__(self):
+            self._inner = host_ser
+            self.fail_next = True
+
+        @property
+        def in_waiting(self):
+            if self.fail_next:
+                self.fail_next = False
+                raise OSError("transient")
+            return self._inner.in_waiting
+
+        def read(self, n=1):
+            return self._inner.read(n)
+
+    t = SerialTransport(FlakySerial())
+    t.start_rx()
+    try:
+        dev_ser.write(b"\x43")
+        assert t.read_byte(timeout=1.0) == 0x43
+        # 仅一次异常未达退出阈值：线程应仍存活
+        assert t._thread is not None and t._thread.is_alive()
+    finally:
+        t.stop_rx()
+
+
 def test_wait_for_reopen_with_factory_rearms_rx():
     host_ser, dev_ser = make_fake_serial_pair()
 
