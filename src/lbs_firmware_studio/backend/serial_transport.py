@@ -34,12 +34,18 @@ class SerialTransport:
         self._reopen_factory = factory
 
     def _port_present(self, port: str) -> bool:
-        """端口当前是否存在。测试可注入 port_lister；生产用 pyserial。"""
-        if self._port_lister is not None:
-            return port in self._port_lister()
-        if serial is not None:
-            return port in {p.device for p in serial.tools.list_ports.comports()}
-        return True
+        """端口当前是否存在。测试可注入 port_lister；生产用 pyserial。
+        枚举异常（comports 抛错）记日志后按「端口不存在」返回 False（T2-S5），
+        避免异常冒出 wait_for_reopen 绕过其失败返回语义。"""
+        try:
+            if self._port_lister is not None:
+                return port in self._port_lister()
+            if serial is not None:
+                return port in {p.device for p in serial.tools.list_ports.comports()}
+            return True
+        except Exception as exc:
+            _logger.warning("串口枚举异常(按端口不存在处理): %r", exc)
+            return False
 
     @property
     def is_open(self) -> bool:
@@ -66,8 +72,10 @@ class SerialTransport:
                 pass
 
     def write(self, data: bytes) -> int:
-        if self._serial is None:
-            raise RuntimeError("serial not open")
+        # 前置检查须含 is_open：端口已 close/拔出后 _serial 非 None 但已不可写，
+        # 不检查会让底层 winerror 22 等裸异常冒给上层（T2-S4）。
+        if not self.is_open:
+            raise RuntimeError("serial 未打开：串口已关闭或拔出")
         return self._serial.write(data)
 
     def set_data_handler(self, handler: Callable[[bytes], None] | None) -> None:

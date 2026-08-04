@@ -1,3 +1,4 @@
+import pytest
 from lbs_firmware_studio.backend.serial_transport import SerialTransport
 from tests.fakes import make_fake_serial_pair
 
@@ -269,3 +270,49 @@ def test_handler_exception_does_not_kill_rx_thread():
         assert t._thread is not None and t._thread.is_alive(), "handler 异常后 RX 线程应仍存活"
     finally:
         t.stop_rx()
+
+
+def test_write_after_close_raises_clear_error():
+    """T2-S4：write 前置检查必须含 is_open。close 后端口已关/拔出时 write 应抛
+    清晰的 RuntimeError（含"未打开"提示），而不是把底层异常（winerror 22 等）
+    冒给上层。修复前 write 只查 `_serial is None`，close 后仍直接调底层 write。"""
+    host_ser, _ = make_fake_serial_pair()
+    t = SerialTransport(host_ser)
+    t.write(b"ok")      # 打开状态正常写入
+    t.close()           # 关闭后 is_open=False
+    with pytest.raises(RuntimeError, match="未打开"):
+        t.write(b"ping")
+
+
+def test_port_present_exception_contained():
+    """T2-S5：端口枚举异常（comports/lister 抛错）不得冒出 wait_for_reopen，
+    应按「端口不存在」处理、让 wait_for_reopen 走失败返回 False。
+    修复前 _port_present 无 try/except，USB 枚举抛错直接冒出 wait_for_reopen。"""
+    host_ser, _ = make_fake_serial_pair()
+    probe_calls = {"n": 0}
+
+    def boom_lister():
+        probe_calls["n"] += 1
+        raise OSError(123, "USB enumeration failed")
+
+    def reopen_factory(port, baud):
+        raise OSError("reopen failed")
+
+    t = SerialTransport(host_ser, reopen_factory=reopen_factory, port_lister=boom_lister)
+    ok = t.wait_for_reopen("COM_FAKE", 115200, retries=2, delay=0.01, disappear_timeout=0.1)
+    assert ok is False          # 枚举异常被吞掉，按失败返回
+    assert probe_calls["n"] >= 1  # 枚举确实被探测过（异常来自枚举）
+
+
+def test_port_present_comports_exception_contained(monkeypatch):
+    """T2-S5 的 comports() 分支：pyserial 枚举抛错时 _port_present 返回 False 不冒泡。"""
+    import lbs_firmware_studio.backend.serial_transport as st
+    if st.serial is None:
+        pytest.skip("pyserial 未安装，跳过 comports() 分支")
+
+    def boom():
+        raise OSError(123, "USB enumeration failed")
+
+    monkeypatch.setattr(st.serial.tools.list_ports, "comports", boom)
+    t = SerialTransport()  # 不注入 port_lister，走 pyserial 探测路径
+    assert t._port_present("COM_FAKE") is False
