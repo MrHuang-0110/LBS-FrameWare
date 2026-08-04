@@ -1,3 +1,24 @@
-<!-- project-memory:start -->
-会话开始时：先核对 .mcp.json 的 MEMORY_FILE_PATH 指向本项目 .memory/memory.jsonl（用 project-memory skill 的 check_memory_path.py，不一致则 --fix 修正并提示重启）；然后重建并读取 .memory/index.md 这份轻量索引（名字/类型/摘要），据此了解本项目有哪些记忆，**不开场全量 read_graph**。对话中需要某条记忆正文时，再用 open_nodes/search_nodes 按需读取。若因 MCP 服务/包缺失失败，按 project-memory skill 的 setup Step 0 自愈安装后重试。
-<!-- project-memory:end -->
+# 项目规则
+
+## 分支与推送
+
+- 日常开发在 **`main-work`** 分支进行；改动完成、验证通过后合并回 `main` 并推送。
+- 每个改动提交到 `main-work` 后可随时推送远端（`origin/main-work`）防丢失。
+
+## 开发流程（每次代码改动必走）
+
+1. **TDD**：先写/改测试，再实现；改动后运行 `python -m pytest` 保证测试全绿。
+2. **代码审查**：改动完成后派**子 agent** 做 code review，修复其发现的问题后再定稿。
+3. **code-simplifier**：定稿前用 code-simplifier 简化代码。
+4. **验证与合并**：主 agent 负责最终验证、合并与推送。
+
+> 代码修改、代码审查均由**子 agent（subagent）** 完成，主 agent 负责规划、验证、合并与推送。
+
+## 项目记忆
+
+- 项目记忆统一存放在 **`./doc/*.md`** 文件（已停用知识图谱/MCP 记忆，`.memory/` 已废弃）。
+- `doc/README.md` 是记忆索引；分类见下：
+  - `doc/pitfalls.md` —— 坑（现象/根因/修复/验证位置）
+  - `doc/framework.md` —— 项目框架（架构/模块/约定）
+  - `doc/knowledge.md` —— 知识（方案/调试方法）
+- **动代码前先查**相关记忆条目，避免重踩坑；遇到新坑、新框架事实或新知识时**就地更新**对应文件。
