@@ -90,4 +90,50 @@
 | T3-Y1 | ymodem.py:34 | minor（非问题） | 填充字节 0x1A（SUB/Ctrl-Z）硬编码。**理由**：YMODEM/XMODEM 标准规定数据块不足块长时以 0x1A 填充，是协议必需而非魔法数；tests/test_ymodem.py:20 已断言填充正确。 | 非问题 |
 | T3-Y2 | ymodem.py:29-36 | minor（非问题） | `make_packet` 无 seq 范围校验，`seq & 0xFF` / `(~seq) & 0xFF` 静默截断。**理由**：8 位取模即 YMODEM 协议定义（seq 为 mod-256 计数器），tests/test_ymodem.py:29-31 已验证 255 回绕补码正确；seq 的调用方回绕逻辑偏差单独跟踪于 T3-T3。建议：docstring 注明取模语义，避免未来调用方误解。 | 非问题 |
 
+### 批次 3：编排/业务层（deployer / pika_compiler / sensor_update / monitor_parser / profile / monitor_profiles）
+
+审查日期：2026-08-04。无回归验证：本子任务执行环境无 bash/git、`irmia-devkit/test_runner` 被安全层拦截（与 Task 2/3 相同），Step 3 由主 agent 代跑（命令见简报）。
+
+#### 1. deployer.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-D1 | deployer.py:83-86 | minor | **行为确认①（YMODEM 固件只发第一个文件）= 有意行为**。`sorted(glob("*"))` + `break` 只发一个文件：NEXT-AI 是唯一 ymodem 产品，`folders: [__single__]`（products.yaml:47）即"单文件固件"约定，fwlib 目录实际只放单个 atk_f103.bin，tests/test_deployer.py:80-102 亦依赖"取第一个文件"语义。**但缺防御**：目录混入多余文件（README/旧版本 bin）时按字典序取首个可能发错文件；目录为空/仅子目录时零文件发送仍返回 done（与 T4-D2 同类）。建议：按扩展名（.bin）过滤 + 校验恰好一个文件，或注释显式声明单文件约定。 | 确认（有意行为，建议加固） |
+| T4-D2 | deployer.py:78-81,87 | minor | **行为确认②（custom_frame 对不存在的目录静默跳过）= 应告警（需修复）**。`if sub.exists()` 跳过缺失目录且无任何提示：用户误以为全部文件夹已升级；极端情况（folders 全部缺失）仅执行 enter→reconnect→空 finish_session 仍上报 done。NEW-AI/SPARK-AI 当前 folders 与 fwlib 子目录均对齐（app/music/boot/config/version、app/version），风险来自固件目录与配置不同步（如发布新版本缺目录）。建议：对缺失目录 log 警告或 error 提示缺失列表；全部缺失时不应报 done。 | 确认（需修复） |
+| T4-D3 | deployer.py:4-13 | minor | PySide6 缺失桩 `Signal.connect` 仅保存单个 `_fn`，多 connect 静默覆盖，且桩缺 disconnect/is_connected 等 API。**影响面已核实**：CLI（cli.py:41-43，三个不同 signal 各连一槽）、测试（test_deployer/test_worker 单连接）、GUI（真 PySide6，桩不生效）——当前无触发路径；但破坏 PySide6 Signal 多槽语义，未来 CLI/测试对同一 signal 二次 connect 会静默丢槽。建议：桩改列表存储 _fns（connect 追加、emit 遍历）并补 disconnect/is_connected。 | 确认（建议补全桩） |
+| T4-D4 | deployer.py:45,53-54 | minor（非问题） | BLE 降级参数与 pitfalls 一致性核实：chunk 200（:45）与 doc/pitfalls.md「BLE 下发长脚本第一帧无 ACK 超时」修复一致（帧长 207B≤MTU244 不拆片）；block 128（:53）与 tests/test_deployer.py:111-118 断言及注释引用的 pika_deploy.py BT_YMODEM_BLOCK 一致；ack 90.0（:54）为 BLE YMODEM 慢链路 ACK 等待，无 pitfalls 直接佐证但设计合理。**理由**：参数均有测试/注释佐证、行为一致。建议：将 YMODEM 侧参数（128 块/90s ack）补记入 pitfalls（当前仅记录 custom_frame chunk 200）。 | 非问题 |
+| T4-D5 | deployer.py:89-92,114-117 | minor | `error.emit` + `raise` 双通道上报的契约问题：update_firmware/deploy_script 失败时先 emit error 再抛异常，配合 gui/worker.py:51-59 `run_firmware` 的 except **无条件**补发 error（run_script 有 `opened` 标志防重复、run_firmware 没有），GUI 在升级失败时弹**两次**错误框；test_worker.py 未断言 error 条数故未暴露。建议：worker.run_firmware 参照 run_script 仅在 open 前失败才补发，或 deployer 明确"emit 与 raise 二选一"契约。 | 确认 |
+| T4-D6 | deployer.py:82-87 | minor | YMODEM 固件路径对 firmware_dir 无文件/无匹配文件（仅子目录）时零发送仍 finish_session 并报 done——"空升级静默成功"，与 T4-D2 同类（用户无感知）。建议：发送前校验至少一个文件，否则报错。 | 确认 |
+
+#### 2. pika_compiler.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-PC1 | pika_compiler.py:14 | minor | `subprocess.run(cmd, capture_output=True, ...)` 无 timeout：编译器（rust-msc.exe）挂起时 deploy_script 无限阻塞——GUI 侧 DeployWorker 永不发 finished、UI 恒显"编译中"；CLI 侧进程挂死。失败路径已有 returncode/输出校验（:16-19），唯独缺超时兜底。建议：加 `timeout=60` 并捕获 `subprocess.TimeoutExpired` 转含命令与超时值的友好 RuntimeError。 | 确认 |
+
+#### 3. sensor_update.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-S1 | sensor_update.py:16,18 | minor（非问题） | 常量名 DEV_ID_ULTRASION / DEV_ID_CAMER 拼写非标准（ultrasonic/camera）。**理由**：ID 值 0xA3/0xA7 核实自设备源码（e:/LBS-NEW-AI/Drivers/DataFile/*，见模块 docstring）；monitor_profiles.py SENSOR_NAMES 的 JSON key 亦用 "ultrasion"/"camer" 且与设备端一致（监控映射依赖）；常量名拼写不影响协议字节。改动有被"好心纠正"破坏协议/映射一致性的风险。建议：注释注明"拼写沿袭设备端，勿纠正"。 | 非问题 |
+
+#### 4. monitor_parser.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-M1 | monitor_parser.py:17-27 | minor | 缓冲上限 MAX_BUFFER=64K 仅「无换行」时清空：超长行**最终带换行**时（设备异常输出一行 >64K 且以 \r\n 结尾）可撑破上限——while 循环会完整 partition 出超长行，内存峰值=最长行长度、防护语义被绕过；tests/test_monitor_parser.py:39-42 仅覆盖"无换行超上限"路径。功能上超长行 json.loads 失败会静默丢弃（不崩），但缓冲膨胀防护失效。建议：while 循环内对 partition 出的行超 MAX_BUFFER 时直接丢弃并计数（或截断），补充"超长行带换行"测试。 | 确认 |
+
+#### 5. profile.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-PR1 | profile.py:34-40 | minor | `_to_bytes` 用 `.decode("unicode_escape")` 二次转义：YAML 双引号字符串已被 yaml.safe_load 转义（`"\\r\\n"`→CRLF），unicode_escape 对已转义文本无操作，但会解释全部 Python 转义（\xHH/\uHHHH/\U/\N 等）——配置含反斜杠字面（YAML 单引号写法或 \\ 转义）时可能误转义；Python 3.12+ 对非法 \U 序列抛 UnicodeDecodeError 使 load_profiles 崩溃。当前 products.yaml 全部双引号且无反斜杠，**现网配置安全**。建议：改为受控替换（仅解释 \r \n \t \\ 等）或直接 `val.encode("utf-8")`（YAML 双引号已处理转义），并加单引号含反斜杠场景测试。 | 确认 |
+| T4-PR2 | profile.py:56,61 | minor（非问题） | templates 回退 `_resolve(base, Path(firmware_dir).parent / "templates")` 使用**未 resolve** 的原始 YAML 字符串。**理由**：对照 tests/test_profile_resolve.py:78（test_templates_dir_falls_back_when_absent）已核实——常规配置（firmware_dir="./products/X/fwlib"）下 Path(...).parent 与"先 resolve 再取父级"结果完全等价（相对路径最终经 _resolve 规整、绝对路径原样），测试通过；唯一差异场景为 firmware_dir="." / ".."（Path(".").parent 与 resolve 后 .parent 不同），当前无实际配置触发且语义无定论。建议：回退前先 `_resolve(base, firmware_dir)` 再取父级以统一边界语义（非必须）。 | 非问题 |
+
+#### 6. gui/pages/monitor_profiles.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T4-MP1 | monitor_profiles.py 全文 | minor（非问题） | 纯数据文件 + 3 个纯函数辅助。**理由**：get_by_path（点路径嵌套取值，任一层缺失返回 None）、sensor_display_name（get 兜底原 key）、get_host_state_path（按 label 匹配）均为确定性纯函数，无 IO/无状态/无异常路径，确认无逻辑风险。附注（维护性，非缺陷）：SENSOR_NAMES 与 sensor_update.py SENSOR_UPDATE_OPTIONS 重复维护设备显示名/ID（新增设备需同步两处，有漂移风险）；get_host_state_path 以 "运行状态" 文本 label 耦合 status_fields 数据，改动 label 名会静默失效。 | 非问题 |
+
 <!-- 约定：后续批次（协议层 → 编排层）审查产出追加到本文件；批次修复任务完成时把对应行改为"已修复"，全量 pytest 绿后改"已验证"。 -->
