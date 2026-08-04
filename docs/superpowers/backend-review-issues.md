@@ -60,4 +60,34 @@
 | T2-SC2 | ble_scanner.py:42-57 | minor（非问题） | dict 形态假设 `for dev, adv in devices.values()` 恒为二元组、name/rssi 取 adv 优先。**理由**：与 bleak 3.x `return_adv=True` 返回结构一致（bleak-backend-fix-report 已实测），值结构异常会被 :39 的 except 吞掉表现为空列表，不崩溃。建议：异常时记录日志便于排障。 | 非问题 |
 | T2-SC3 | ble_scanner.py:39-40 | minor | 所有扫描异常一律静默返回 `[]`（适配器关闭、结构异常等），GUI 无法区分"没有设备"与"扫描失败"。建议：增加可选的失败原因上报（如返回 (list, err) 或回调），或至少记录一条日志。 | 待定 |
 
+### 批次 2：协议层（transfer_protocol / protocol_frame / ymodem）
+
+审查日期：2026-08-04。无回归验证：本子任务执行环境无 bash/git、`irmia-devkit/test_runner` 被安全层拦截（read_only=false，与 Task 2 相同），Step 3 由主 agent 代跑（命令见简报）。
+
+#### 1. transfer_protocol.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T3-T1 | transfer_protocol.py:126-127 | minor | `_last_frame_timeout` 用 dict 直接索引 `[self.last_frame_ack]` 无默认值：`last_frame_ack` 来自产品 YAML 配置（profile.py:18,74 原样透传、无枚举校验），配置写错（如带空格 "wait_2s " / 非法值 "wait_5s"）时在升级中途抛 KeyError——此时设备已复位进入升级模式，升级中断且无友好提示，需手动恢复。建议：改为 `.get(self.last_frame_ack, 2.0)` 回退默认值，并在 `__init__` 校验枚举值。 | 确认 |
+| T3-T2 | transfer_protocol.py:147,149,183,218,228 | minor | 5 处 `print(f"[DEBUG] ...")` 调试残留：无开关、无门控，YmodemProtocol 已有 `log_cb` 参数（:134）却未使用（CustomFrameProtocol 已用 log_cb，风格不一致）；数据块路径每包打印一次（大固件几百~几千行 stdout 刷屏）。建议：统一转 `log_cb` 调用或环境变量门控。 | 确认 |
+| T3-T3 | transfer_protocol.py:172 | major | `seq = seq + 1 if seq < 255 else 1`：seq 回绕 255→1 **跳过 0**，与 YMODEM 标准 8 位计数器 255→0 回绕不一致。触发条件：1024B 块固件 >255KB、128B 块(BLE 链路)脚本 >32KB 时进入回绕。若设备端严格校验 seq 连续性（期望 255 后为 0），会持续 NAK 直至重试耗尽上传失败；simulator `_read_packet`（tests/simulator.py:162-180）剥掉 seq 不校验，该路径无测试覆盖。建议：改为 `seq = (seq + 1) & 0xFF`（255→0），并在模拟器增加 seq 校验测试。**待确认**：真机接收端是否校验 seq 连续性。 | 待定 |
+| T3-T4 | transfer_protocol.py:185,207-227 | minor | 数据块阶段设备回 NAK（CRC 校验失败请求重传，YMODEM 标准行为）时 `_wait_control` 不识别 0x15：非 CAN/非期望/非可打印字符，落入 :226「其它非期望控制字节：继续等」分支，等满 `ack_timeout` 超时后才触发重传——语义等价但每个坏块多耗一个超时周期；且 simulator `_read_packet` 不校验 CRC，NAK 分支无任何测试覆盖。建议：`_wait_control` 对 NAK 显式短路（立即触发重传），simulator 增加 CRC 错包模拟。 | 确认 |
+| T3-T5 | transfer_protocol.py:44 | minor | `FOLDER_CMD_MAP[folder_name]` 直接索引无防护：`folder_name` 来自产品 YAML 的 `folders` 列表（deployer.py:78-81 遍历），配置了 map 之外的文件夹名（如 "apps"）时 KeyError 中断升级，与 T3-T1 同类（外部配置输入未校验）。建议：`.get` + 友好报错，或加载配置时校验。 | 确认 |
+| T3-T6 | transfer_protocol.py:89,97,109,212 | minor（非问题） | 4 处 `max(0.05, _remaining())` 超时魔法数一致性已核实：字面一致、语义正确（最小轮询间隔 50ms，防止 deadline 归零后 read_byte(timeout=0) 忙轮询空转）。**理由**：无行为缺陷，仅建议提取命名常量并注释以提升可维护性，非必须改动。 | 非问题 |
+| T3-T7 | transfer_protocol.py:146 | minor（非问题） | `b"ymodem update fmware\r\n"` 中 "fmware" 拼写为**已知协议约定**：与 tests/simulator.py:97（`b"fmware" in line` 判定固件会话）及真机固件共用，改动会导致握手失败。**理由**：必须保持原样，**禁止改动**。 | 非问题 |
+
+#### 2. protocol_frame.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T3-P1 | protocol_frame.py:32-36 | minor | `build_frame` 不校验 data 类型：传 `str` 时 `len(data)` 能通过 MAX_DATA_LEN 检查（str 有 len），随后 `head + data`（bytes + str）抛 TypeError；传 `bytearray`/`memoryview` 同理。生产调用方均传 bytes 不会触发，但接口契约无保护，误用即崩溃且报错信息指向拼接行而非入参。建议：入口加 `isinstance(data, bytes)` 校验并抛带参数说明的 TypeError。 | 确认 |
+| T3-P2 | protocol_frame.py:39-51 | minor（非问题） | `parse_frame` 不校验 src/dst（SOURCE/DEST 字段）。**理由**：真机 ACK 帧 src/dst 与主机顺序相反（见 transfer_protocol.py:79-82 注释与 tests/test_custom_frame_protocol.py:72-78 实测），校验反而会拒绝合法真机 ACK，是协议约定而非缺陷。 | 非问题 |
+
+#### 3. ymodem.py
+
+| 编号 | 位置（文件:行号） | 严重度 | 描述 | 状态 |
+|---|---|---|---|---|
+| T3-Y1 | ymodem.py:34 | minor（非问题） | 填充字节 0x1A（SUB/Ctrl-Z）硬编码。**理由**：YMODEM/XMODEM 标准规定数据块不足块长时以 0x1A 填充，是协议必需而非魔法数；tests/test_ymodem.py:20 已断言填充正确。 | 非问题 |
+| T3-Y2 | ymodem.py:29-36 | minor（非问题） | `make_packet` 无 seq 范围校验，`seq & 0xFF` / `(~seq) & 0xFF` 静默截断。**理由**：8 位取模即 YMODEM 协议定义（seq 为 mod-256 计数器），tests/test_ymodem.py:29-31 已验证 255 回绕补码正确；seq 的调用方回绕逻辑偏差单独跟踪于 T3-T3。建议：docstring 注明取模语义，避免未来调用方误解。 | 非问题 |
+
 <!-- 约定：后续批次（协议层 → 编排层）审查产出追加到本文件；批次修复任务完成时把对应行改为"已修复"，全量 pytest 绿后改"已验证"。 -->
