@@ -15,10 +15,6 @@ class MonitorParser:
 
     def feed(self, data: bytes) -> list[dict]:
         self._buf.extend(data)
-        # 缓冲超上限且仍无换行 -> 异常流，清空防内存膨胀
-        if len(self._buf) > self.MAX_BUFFER and b"\n" not in self._buf:
-            self._buf.clear()
-            return []
         out: list[dict] = []
         while b"\n" in self._buf:
             line, _, rest = self._buf.partition(b"\n")
@@ -26,6 +22,10 @@ class MonitorParser:
             obj = self._parse_line(bytes(line))
             if obj is not None:
                 out.append(obj)
+        # 缓冲超上限 -> 兜底截断：切行后残留仍超限（极端超长行/异常流）时强制清空，
+        # 统一上限守卫（不再要求"完全无换行"），保证缓冲永不撑破 MAX_BUFFER
+        if len(self._buf) > self.MAX_BUFFER:
+            self._buf.clear()
         return out
 
     @staticmethod

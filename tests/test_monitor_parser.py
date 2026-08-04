@@ -40,3 +40,23 @@ def test_buffer_overflow_resets():
     p = MonitorParser()
     p.feed(b"x" * (MonitorParser.MAX_BUFFER + 10))   # 无换行超上限 -> 清空
     assert p.feed(b'{"a": 1}\r\n') == [{"a": 1}]      # 清空后仍能正常解析
+
+
+def test_feed_overlong_line_truncates():
+    p = MonitorParser()
+    # 单次喂入超长数据块、换行靠前：切行后残留的半行仍超限。
+    # 旧守卫要求"完全无换行"才清空，此处带换行不触发，缓冲被撑破（T4-M1）。
+    big = b"x" * (MonitorParser.MAX_BUFFER + 10)
+    p.feed(b"\n" + big)
+    assert len(p._buf) <= MonitorParser.MAX_BUFFER
+    # 截断后缓冲仍可正常解析后续合法行
+    assert p.feed(b'{"a": 1}\r\n') == [{"a": 1}]
+
+
+def test_feed_overlong_across_chunks_truncates():
+    p = MonitorParser()
+    # 多次 feed 各自含换行、残留超长半行：旧守卫永不触发，缓冲持续膨胀。
+    # 每次喂入后缓冲必须被上限守卫压回 MAX_BUFFER 以内。
+    for _ in range(3):
+        p.feed(b"\n" + b"y" * (MonitorParser.MAX_BUFFER + 10))
+        assert len(p._buf) <= MonitorParser.MAX_BUFFER
