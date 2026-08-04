@@ -8,7 +8,7 @@ def test_compile_success(monkeypatch, tmp_path):
     out = tmp_path / "main.py.o"
     compiler = tmp_path / "rust-msc.exe"; compiler.write_bytes(b"")
 
-    def fake_run(cmd, cwd=None, capture_output=True, text=True, encoding=None, errors=None):
+    def fake_run(cmd, cwd=None, capture_output=True, text=True, encoding=None, errors=None, timeout=None):
         # 模拟编译器写出 .o
         out_path = pathlib.Path(cmd[cmd.index("-o") + 1])
         out_path.write_bytes(b"\x0F\x70 79o\x00")  # magic .pyo
@@ -32,3 +32,18 @@ def test_compile_failure_raises(monkeypatch, tmp_path):
 def test_compile_missing_compiler(tmp_path):
     with pytest.raises(FileNotFoundError):
         compile_py(tmp_path / "a.py", tmp_path / "a.py.o", tmp_path / "nope.exe")
+
+
+def test_compile_timeout_raises(monkeypatch, tmp_path):
+    # 用 mock subprocess.run 抛 TimeoutExpired，避免测试真挂 60 秒
+    py = tmp_path / "main.py"; py.write_text("print(1)")
+    out = tmp_path / "main.py.o"
+    compiler = tmp_path / "rust-msc.exe"; compiler.write_bytes(b"")
+
+    def fake_run(cmd, cwd=None, capture_output=True, text=True, encoding=None, errors=None, timeout=None):
+        raise subprocess.TimeoutExpired(cmd, timeout, output="", stderr="compiler stuck")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="编译器超时") as excinfo:
+        compile_py(py, out, compiler)
+    assert str(compiler) in str(excinfo.value)
