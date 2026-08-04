@@ -21,6 +21,10 @@ class TransferProtocol(ABC):
     def finish_session(self, t: SerialTransport, *, firmware: bool) -> None: ...
 
 
+# 末帧等待时长表：非法 last_frame_ack 时回退默认 wait_2s，防 KeyError。
+_LAST_FRAME_TIMEOUTS = {"wait_2s": 2.0, "wait_30s": 30.0, "skip": 0.5}
+
+
 class CustomFrameProtocol(TransferProtocol):
     def __init__(self, chunk_size: int = 248, ack_timeout: float = 2.0,
                  last_frame_ack: str = "wait_2s", max_retries: int = 3,
@@ -124,7 +128,7 @@ class CustomFrameProtocol(TransferProtocol):
         return True if is_last else False
 
     def _last_frame_timeout(self) -> float:
-        return {"wait_2s": 2.0, "wait_30s": 30.0, "skip": 0.5}[self.last_frame_ack]
+        return _LAST_FRAME_TIMEOUTS.get(self.last_frame_ack, _LAST_FRAME_TIMEOUTS["wait_2s"])
 
 
 class YmodemProtocol(TransferProtocol):

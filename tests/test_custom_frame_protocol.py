@@ -85,3 +85,21 @@ def test_wait_ack_still_accepts_empty_data_ack():
     proto = CustomFrameProtocol(ack_timeout=1.0)
     t = _ByteFeeder(empty_ack)
     assert proto._wait_ack(t, timeout=1.0, is_last=False) is True
+
+
+def test_invalid_last_frame_ack_falls_back():
+    """非法 last_frame_ack 不抛 KeyError：回退默认 wait_2s 路径完成发送。"""
+    t, sim = _setup()
+    try:
+        proto = CustomFrameProtocol(last_frame_ack="bogus")
+        proto.enter_upgrade_mode(t, firmware=True)
+        with tempfile.NamedTemporaryFile(suffix=".py.o", delete=False) as f:
+            f.write(b"hello world data")
+            path = pathlib.Path(f.name)
+        progress = []
+        proto.send_file(t, path, lambda d, n: progress.append((d, n)), firmware=False)
+        # 触发含最后一帧的发送路径：非法 last_frame_ack 不再抛 KeyError，按默认 wait_2s 完成
+        assert sim.received_files.get(path.name) == b"hello world data"
+        assert progress[-1][0] == progress[-1][1]
+    finally:
+        t.stop_rx(); sim.stop()
