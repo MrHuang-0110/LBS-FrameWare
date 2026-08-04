@@ -58,6 +58,13 @@ def _find_transparent_chars(pairs) -> tuple[str, str, bool]:
     return notify_uuid, write_uuid, write_response
 
 
+# ---- 断开超时（T2-B2）----
+# close()/wait_for_reopen() 等待设备断开命令的单次上限。设备无响应（断开命令挂起）
+# 时主线程最多阻塞该时长；Task 18 已让"设备已断"场景（_connected=False）走守卫
+# 快速返回，不进入此处等待。
+_DISCONNECT_TIMEOUT = 2.0
+
+
 class _RealBleakClient:
     """生产用：包装 bleak.BleakClient，实现 BleTransport 依赖的客户端接口。"""
     def __init__(self, address: str):
@@ -272,7 +279,7 @@ class BleTransport:
         self._ensure_loop()
         try:
             if self._connected:
-                self._run(self._disconnect(), timeout=10.0)
+                self._run(self._disconnect(), timeout=_DISCONNECT_TIMEOUT)
         except Exception:
             pass
         self._connected = False
@@ -310,9 +317,21 @@ class BleTransport:
             return False
 
     def close(self) -> None:
+        """释放 BLE 资源并停止事件循环线程。幂等：loop/线程已清理时直接返回。
+
+        设计说明（T2-B2）：
+        - 断开等待上限 _DISCONNECT_TIMEOUT 秒（原 10s），设备无响应时主线程冻结
+          从最多约 12s 降到约 3s 内；Task 18 已让"设备已断"场景（_connected=False）
+          走守卫快速返回，不进入断开等待。
+        - 若 GUI 侧需要彻底不冻结，可在界面线程把 close() 派发到后台线程
+          （QThreadPool / threading.Thread / asyncio.to_thread）；本类保持同步
+          close 语义不变（释放资源、停线程、清状态），调用方式由上层选择。
+        """
+        if self._loop is None and self._loop_thread is None:
+            return   # 幂等：从未初始化或已清理，直接返回
         if self._client is not None and self._connected:
             try:
-                self._run(self._disconnect(), timeout=10.0)
+                self._run(self._disconnect(), timeout=_DISCONNECT_TIMEOUT)
             except Exception:
                 pass
         self._connected = False
@@ -330,6 +349,8 @@ class BleTransport:
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._loop_thread is not None:
-            self._loop_thread.join(timeout=2)
+            # join 兜底 1s：loop 正常停止时立即返回；极端情况（loop 被同步阻塞）下
+            # 也不会让 close() 无限等待，剩余由 daemon 线程自然消亡。
+            self._loop_thread.join(timeout=1)
         self._loop = None
         self._loop_thread = None

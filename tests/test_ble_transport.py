@@ -394,3 +394,57 @@ def test_write_failure_marks_not_open():
         # 需先显式 disconnect 取消 fake pump，避免 asyncio 任务泄漏警告。
         t._run(client.disconnect())
         t.close()
+
+
+def test_close_is_idempotent_and_fast():
+    """T2-B2 确定性回归：close() 不得让主线程长时间阻塞。
+
+    1) 设备无响应（disconnect 命令挂起）时，close 内部 _run(self._disconnect())
+       等待上限必须短——修复前 10s（+join 2s），UI 冻结最多 12s；修复后约 2s。
+       构造挂起 disconnect 断言 close 总耗时 < 3s。
+    2) 已断开场景（simulate_disconnect 后 _connected=False）连续 close 两次：
+       幂等、快速、不抛错（Task 18 守卫 + close 幂等守卫）。
+
+    挂起的 disconnect 任务在测试末用驱动事件循环的方式显式完成，避免
+    asyncio pending 任务泄漏警告（与 Task 18 的 finally 清理模式同源）。
+    """
+    import time as _t
+    from tests.fakes import make_fake_ble_pair
+
+    # ---- 场景 1：无响应设备，close 必须快速返回 ----
+    client, dev = make_fake_ble_pair()
+    hang = asyncio.Event()
+
+    async def hanging_disconnect():
+        await hang.wait()   # 设备无响应：断开命令永不返回
+
+    client.disconnect = hanging_disconnect
+    t1 = BleTransport(client_factory=lambda addr: client)
+    t1.open("addr")
+    loop1 = t1._loop
+    start = _t.monotonic()
+    t1.close()
+    dt = _t.monotonic() - start
+    assert dt < 3.0, f"无响应设备 close 阻塞 {dt:.2f}s，超过 3s 阈值"
+    # 清理：放行并驱动已停止的事件循环完成挂起的 disconnect，避免 pending 泄漏。
+    pump = threading.Thread(target=loop1.run_forever, daemon=True)
+    pump.start()
+    loop1.call_soon_threadsafe(hang.set)    # 在 loop 线程放行挂起的 disconnect
+    loop1.call_soon_threadsafe(loop1.stop)  # 之后停止 loop，退出 run_forever
+    pump.join(timeout=2.0)
+    loop1.close()
+
+    # ---- 场景 2：已断开场景连续 close 两次：幂等、快速、不抛错 ----
+    client2, dev2 = make_fake_ble_pair()
+    t2 = BleTransport(client_factory=lambda addr: client2)
+    t2.open("addr")
+    try:
+        client2.simulate_disconnect()   # 设备侧断开 -> _connected=False
+        t2._run(client2.disconnect())   # 取消 fake pump（Task 18 清理模式）
+        start = _t.monotonic()
+        t2.close()
+        dt1 = _t.monotonic() - start
+        assert dt1 < 3.0, f"第一次 close 阻塞 {dt1:.2f}s，超过 3s 阈值"
+    finally:
+        t2.close()   # 幂等：已关闭后再次 close 不抛错
+        assert t2._loop is None and t2._loop_thread is None
