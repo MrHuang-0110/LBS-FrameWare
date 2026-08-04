@@ -103,3 +103,13 @@ def test_invalid_last_frame_ack_falls_back():
         assert progress[-1][0] == progress[-1][1]
     finally:
         t.stop_rx(); sim.stop()
+
+
+def test_unknown_folder_raises_clear_error():
+    """未知文件夹名不抛裸 KeyError：显式 ValueError 且消息含文件夹名（T3-T5）。
+    校验必须先于 folder.iterdir()，故传不存在的路径也能暴露映射问题。"""
+    import pytest
+    proto = CustomFrameProtocol()
+    t = _ByteFeeder(b"")
+    with pytest.raises(ValueError, match="unknown"):
+        proto.send_folder(t, pathlib.Path("nonexistent-dir"), "unknown", lambda d, n: None)

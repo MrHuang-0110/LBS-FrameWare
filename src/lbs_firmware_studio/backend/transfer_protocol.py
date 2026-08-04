@@ -45,7 +45,9 @@ class CustomFrameProtocol(TransferProtocol):
         self._send_file_with_cmd(t, path, pf.CMD_FILE_START, on_progress)
 
     def send_folder(self, t: SerialTransport, folder: Path, folder_name: str, on_progress: ProgressCb) -> None:
-        cmd = pf.FOLDER_CMD_MAP[folder_name]
+        cmd = pf.FOLDER_CMD_MAP.get(folder_name)
+        if cmd is None:
+            raise ValueError(f"未知文件夹命令: {folder_name}（可用: {', '.join(pf.FOLDER_CMD_MAP)}）")
         for f in sorted(folder.iterdir()):
             if f.is_file():
                 self._send_file_with_cmd(t, f, cmd, on_progress)
