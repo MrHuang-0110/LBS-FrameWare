@@ -31,12 +31,27 @@ class DeviceProfile:
     ble_firmware: bool = False                  # 蓝牙是否支持固件更新(custom_frame=False)
 
 
+# _to_bytes 只解释 YAML 双引号常用的受控转义（\r \n \t \\）。
+# 不用 unicode_escape：它会把 \f/\x/\U 等 Python 转义误解释（如 "C:\fw\lib" 的 \f 变 form feed），
+# 且 Python 3.12+ 对非法 \U 序列抛 UnicodeDecodeError，使 load_profiles 直接崩溃。
+_ESCAPES = {"r": "\r", "n": "\n", "t": "\t", "\\": "\\"}
+
+
 def _to_bytes(val) -> bytes:
     if isinstance(val, bytes):
         return val
     if isinstance(val, str):
-        # 允许含转义序列的字符串（如 "ymodem\r\n"）按字面解释
-        return val.encode("utf-8").decode("unicode_escape").encode("latin-1")
+        out: list[str] = []
+        i, n = 0, len(val)
+        while i < n:
+            ch = val[i]
+            if ch == "\\" and i + 1 < n and val[i + 1] in _ESCAPES:
+                out.append(_ESCAPES[val[i + 1]])
+                i += 2
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out).encode("utf-8")
     return b""
 
 
