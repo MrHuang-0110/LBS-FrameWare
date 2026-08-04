@@ -155,6 +155,16 @@ class BleTransport:
             _ble_log(f"选中 notify={self._notify_uuid} write={self._write_uuid} "
                      f"mtu_size={getattr(self._client, 'mtu_size', 23)} 分片={self._mtu} "
                      f"带响应写={self._write_response}")
+            # 订阅前清空重连残留(对应 SerialTransport 重新武装)。订阅后不再重建
+            # _rx_queue——否则「订阅生效→队列替换」窗口内到达的 notify 字节会落入旧队列
+            # 被整体丢弃(T2-B4 丢字节窗口)。复用同一队列实例，read_byte 中阻塞在
+            # 旧引用的消费者也不会因替换而饿死。清空与 _on_notify 入队经同一锁串行化。
+            with self._lock:
+                while True:
+                    try:
+                        self._rx_queue.get_nowait()
+                    except queue.Empty:
+                        break
             await self._client.start_notify(self._notify_uuid, self._on_notify)
             self._connected = True
         except Exception as e:
@@ -272,8 +282,8 @@ class BleTransport:
         try:
             self._address = address
             self._run(self._connect())
-            with self._lock:
-                self._rx_queue = queue.Queue()
+            # 不再重建 _rx_queue：队列生命周期与实例一致，订阅生效后的 notify 字节
+            # 永不因队列替换而丢失(见 _connect 订阅前清空注释，T2-B4)。
             return True
         except Exception:
             self._connected = False

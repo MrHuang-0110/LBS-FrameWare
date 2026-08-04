@@ -311,3 +311,40 @@ def test_concurrent_notify_and_set_handler_no_corruption():
         stop.set()
         t.close()
     assert not errors, f"线程不应抛异常: {errors}"
+
+
+def test_reconnect_queue_rebuild_no_byte_loss():
+    """T2-B4 确定性回归：重连时 start_notify 订阅生效后、_try_connect 重建 _rx_queue
+    之前（订阅→替换窗口）到达的 notify 字节不得因队列替换而丢失。
+    fake 的 start_notify 在返回前同步触发回调注入窗口字节——修复前字节落入旧队列，
+    随后被 _try_connect 整体替换丢弃(read_byte 读不到)；修复后订阅前清空且不重建
+    队列，字节保留在同一队列实例中可读。同步注入，无 sleep 竞态。
+    """
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+
+    injections = {}
+    call_no = {"n": 0}
+    orig_start_notify = client.start_notify
+
+    async def injecting_start_notify(uuid, cb):
+        call_no["n"] += 1
+        await orig_start_notify(uuid, cb)
+        payload = injections.get(call_no["n"])
+        if payload:
+            cb(None, bytearray(payload))   # 订阅生效后立即注入（窗口内字节）
+
+    client.start_notify = injecting_start_notify
+
+    t = BleTransport(client_factory=lambda addr: client)
+    t.open("addr")                         # 第 1 次订阅：无注入
+    try:
+        assert t.is_open is True
+        injections[2] = b"\xAA\xBB"        # 第 2 次订阅（重连）注入窗口字节
+        ok = t.wait_for_reopen("addr", 0, retries=3, delay=0.02, disappear_timeout=0.1)
+        assert ok is True
+        assert call_no["n"] == 2, "应恰好发生两次订阅(open + 重连)"
+        assert t.read_byte(timeout=1.0) == 0xAA
+        assert t.read_byte(timeout=1.0) == 0xBB
+    finally:
+        t.close()
