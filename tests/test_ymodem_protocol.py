@@ -39,6 +39,30 @@ def test_script_deploy_tolerates_json():
         t.stop_rx(); sim.stop()
 
 
+def test_seq_wraps_256_not_skip_0():
+    """YMODEM seq 回绕必须对齐 mod-256：第 255 块之后 seq=0，不得跳到 1。
+
+    发送 256 个 128B 块（32KB）跨越 255 边界；模拟器新增 seq 连续性校验
+    （不匹配回 NAK 请求重发），修复前第 256 块发 seq=1（期望 0）会触发
+    NAK→重发仍不匹配→超时，本测试因此失败。
+    """
+    host_ser, dev_ser = make_fake_serial_pair()
+    sim = DeviceSimulator(dev_ser, protocol="ymodem")
+    sim.start()
+    t = SerialTransport(host_ser); t.start_rx()
+    try:
+        proto = YmodemProtocol(block_size=128, ack_timeout=0.3)
+        proto.enter_upgrade_mode(t, firmware=True)
+        data = b"\xAA" * (128 * 256)  # 32768B = 256 块，覆盖 seq 255→0 回绕
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+            f.write(data); path = pathlib.Path(f.name)
+        proto.send_file(t, path, lambda d, n: None, firmware=True)
+        assert sim.received_files.get(path.name) == data
+        assert len(sim.received_files[path.name]) == 128 * 256
+    finally:
+        t.stop_rx(); sim.stop()
+
+
 def test_firmware_data_block_timeout_raises():
     """固件传输中数据块超时必须抛错，不得因 usb_quick_exit 静默视为成功。"""
     import threading

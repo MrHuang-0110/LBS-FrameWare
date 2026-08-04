@@ -175,7 +175,8 @@ class YmodemProtocol(TransferProtocol):
             chunk = data[offset:offset + self.block_size]
             self._send_packet_wait(t, ym.make_packet(seq, chunk, self.block_size), firmware=firmware)
             offset += self.block_size
-            seq = seq + 1 if seq < 255 else 1
+            # mod-256 递增：255 之后回绕到 0（YMODEM 标准），不得跳到 1
+            seq = (seq + 1) & 0xFF
             on_progress(min(offset, total), total)
         # 4. 收尾 EOT 双发 + 空结束块
         self._finish(t, firmware)

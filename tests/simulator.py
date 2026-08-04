@@ -131,11 +131,12 @@ class DeviceSimulator:
         self.ser.write(bytes([ym.ACK, ym.CRC_C]))
         if is_firmware and self.emit_json:
             self._emit_json_burst()
-        # 收数据包
+        # 收数据包：seq 从 1 起、按 mod-256 递增；不连续时回 NAK 等重发（对齐 YMODEM 标准）。
+        expected_seq = 1
         while not self._stop.is_set():
-            pkt = self._read_packet(timeout=12.0)
+            pkt = self._read_packet(timeout=12.0, expect_seq=expected_seq)
             if pkt is None:
-                break
+                continue  # seq 校验失败已回 NAK，发送端应重发同 seq 包
             if pkt == bytes([ym.EOT]):
                 self.ser.write(bytes([ym.NAK]))
                 self._read_byte(timeout=5.0)    # 第二个 EOT
@@ -147,6 +148,7 @@ class DeviceSimulator:
                 self.ser.write(b"YMODEM OK\r\n")
                 return
             self._cur_buf.extend(pkt)  # pkt 已是纯 body
+            expected_seq = (expected_seq + 1) & 0xFF
             if self.emit_json and not is_firmware:
                 self._emit_json_burst()
             self.ser.write(bytes([ym.ACK]))
@@ -159,9 +161,11 @@ class DeviceSimulator:
             data = data[:self._cur_size]  # 按文件头声明大小截断填充
         self.received_files[self._cur_name] = data
 
-    def _read_packet(self, timeout: float = 12.0) -> bytes | None:
+    def _read_packet(self, timeout: float = 12.0, expect_seq: int | None = None) -> bytes | None:
         """读一个 YMODEM 包；块大小由 mark 决定(SOH=128/STX=1024)。
-        返回纯 body(去 mark/seq/~seq/crc)，或 EOT 单字节 bytes([ym.EOT])。"""
+        返回纯 body(去 mark/seq/~seq/crc)，或 EOT 单字节 bytes([ym.EOT])。
+        expect_seq 非 None 时校验包 seq（mod-256 取低 8 位）；不匹配回 NAK 并返回 None，
+        模拟真机对不连续 seq 的重发请求。"""
         old = self.ser.timeout
         self.ser.timeout = timeout
         try:
@@ -174,6 +178,9 @@ class DeviceSimulator:
             rest_len = 2 + block_size + 2  # seq,~seq + body + crc16
             rest = self.ser.read(rest_len)
             if len(rest) != rest_len:
+                return None
+            if expect_seq is not None and rest[0] != (expect_seq & 0xFF):
+                self.ser.write(bytes([ym.NAK]))
                 return None
             return rest[2:-2]  # 剥去 seq/~seq 前缀与 crc 尾部
         finally:
