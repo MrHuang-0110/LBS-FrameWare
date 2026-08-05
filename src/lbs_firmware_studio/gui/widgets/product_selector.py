@@ -126,6 +126,10 @@ class ProductSelector(QWidget):
 
     def __init__(self, profiles: dict, current: str, parent=None):
         super().__init__(parent)
+        # 容器最小宽度对齐触发器（168px）：防止顶层 QHBoxLayout 把它压成 0 宽
+        # 导致触发器溢出容器（BUG1 回归测试 test_product_selector_min_width_after_show）。
+        # 高度由顶栏 48px 容器决定，此处只约束宽度。
+        self.setMinimumWidth(_TRIGGER_MIN_W)
         self._names = list(profiles.keys())
         self._locked = False
         self._popup_open = False

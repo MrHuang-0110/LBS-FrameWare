@@ -48,6 +48,12 @@ class PortSelector(QWidget):
         self._scan_worker = None
         self._combo = QComboBox()
         self._refresh_btn = QPushButton("刷新")
+        # 顶栏 48px 适配（设计 §4.1/§4.3）：内部交互控件统一 30px 高。
+        # 高度语义属于 PortSelector 自身（自包含组件），故在组件内固定，
+        # 而非由外部 ConnectionSelector 侵入私有成员（BUG2 回归测试
+        # test_internal_controls_height_30）。
+        self._combo.setFixedHeight(30)
+        self._refresh_btn.setFixedHeight(30)
         self._refresh_btn.clicked.connect(self.refresh)
         self._scan_started = False
         lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)

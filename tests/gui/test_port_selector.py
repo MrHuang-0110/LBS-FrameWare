@@ -39,3 +39,11 @@ def test_empty_ports(qtbot):
     w = PortSelector(lister=lambda: []); qtbot.addWidget(w)
     w.inject_ports([])
     assert w.selected_port() is None
+
+
+def test_internal_controls_height_30(qtbot):
+    """BUG2 回归：PortSelector 内部 combo/refresh 统一 30px 高（顶栏 48px 适配）。
+    setFixedHeight 后 height 立即可断言，不需 show。"""
+    w = PortSelector(lister=lambda: []); qtbot.addWidget(w)
+    assert w._combo.height() == 30
+    assert w._refresh_btn.height() == 30

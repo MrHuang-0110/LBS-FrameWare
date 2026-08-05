@@ -203,3 +203,13 @@ def test_monitor_start_button_hidden(qtbot, tmp_path):
     """监控自动启动后，手动"开始监控"按钮不再显示。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     assert w._monitor._start_btn.isVisible() is False
+
+
+def test_product_selector_min_width_after_show(qtbot, tmp_path):
+    """BUG1 回归：ProductSelector 容器不能被顶栏布局压成 0 宽，show 后 width>=168。"""
+    from PySide6.QtWidgets import QApplication
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml")
+    qtbot.addWidget(w)
+    w.show()
+    QApplication.processEvents()
+    assert w._product_selector.width() >= 168
