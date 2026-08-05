@@ -1,5 +1,6 @@
-"""数据监控页：顶部连接提示条+传感器更新，中部左/右两列 SensorCard，底部 HostStatusBar。
-连接统一走顶栏（决策点 1），本页无端口选择。
+"""数据监控页：顶部连接提示条，中部左/右两列 SensorCard。
+连接统一走顶栏（决策点 1），本页无端口选择；主机信息显示在顶栏 HostStatusBar（Task 3），
+传感器更新入口在侧边栏 sensor 图标（Task 3，MainWindow 复用本页 _open_sensor_update）。
 设备流式 JSON 经 MonitorWorker.frame_parsed 进来 -> 只缓存最新帧 -> QTimer(100ms) 节流渲染。"""
 from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -8,7 +9,6 @@ from PySide6.QtCore import QTimer, Signal
 import qtawesome as qta
 from .. import theme
 from ..widgets.sensor_card import SensorCard
-from ..widgets.host_status_bar import HostStatusBar
 from ..monitor_worker import MonitorWorker
 from .monitor_profiles import MONITOR_PROFILES, get_host_state_path, get_by_path
 
@@ -37,10 +37,6 @@ class MonitorPage(QWidget):
         self._start_btn = QPushButton("开始监控"); self._start_btn.setObjectName("primary")
         self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
         self._start_btn.setVisible(False)
-        self._update_btn = QPushButton("传感器更新")
-        self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
-        self._update_btn.clicked.connect(self._open_sensor_update)
-        self._update_btn.setEnabled(False)     # 需监控中才能下发
         # 连接提示条（设计 §4.5）：未连接 WARNING「请先在顶栏连接设备」/ 已连接 SUCCESS「使用顶栏连接」
         self._conn_hint = QFrame()
         self._conn_hint.setObjectName("connHint")
@@ -58,15 +54,11 @@ class MonitorPage(QWidget):
         self._refresh_connection_hint()
         top = QHBoxLayout()
         top.addWidget(self._conn_hint, 1)
-        top.addWidget(self._update_btn)
 
         # 卡片区（两列）
         self._grid = QGridLayout()
         self._grid.setHorizontalSpacing(12); self._grid.setVerticalSpacing(12)
         self._grid_host = QWidget(); self._grid_host.setLayout(self._grid)
-
-        # 底部状态栏
-        self._status = HostStatusBar()
 
         # 未知产品提示
         self._notice = QLabel(""); self._notice.setStyleSheet(
@@ -78,7 +70,6 @@ class MonitorPage(QWidget):
         lay.addLayout(top)
         lay.addWidget(self._notice)
         lay.addWidget(self._grid_host, 1)
-        lay.addWidget(self._status)
 
         # 节流渲染定时器
         self._timer = QTimer(self)
@@ -116,8 +107,6 @@ class MonitorPage(QWidget):
         prof = MONITOR_PROFILES.get(self._profile.name) if self._profile else None
         if prof is None:
             self._notice.setText(f"产品 {getattr(self._profile, 'name', '?')} 暂不支持数据监控")
-            self._update_btn.setVisible(False)
-            self._status.set_fields([])
             return
 
         self._notice.setText("")
@@ -129,8 +118,6 @@ class MonitorPage(QWidget):
             col = 0 if port < half else 1
             rowpos = port if port < half else port - half
             self._grid.addWidget(card, rowpos, col)
-        self._status.set_fields(prof["status_fields"])
-        self._update_btn.setVisible(prof["sensor_update"])
 
     # --- 启停 ---
     def start_monitor(self) -> None:
@@ -158,10 +145,6 @@ class MonitorPage(QWidget):
         else:
             self._start_btn.setText("开始监控")
             self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
-        # 传感器更新仅在 NEW-AI 且监控中可用
-        prof = MONITOR_PROFILES.get(self._profile.name) if self._profile else None
-        can_update = self._monitoring and bool(prof and prof["sensor_update"])
-        self._update_btn.setEnabled(can_update)
         if self._monitoring:
             self._timer.start()
         else:
@@ -188,7 +171,6 @@ class MonitorPage(QWidget):
             item = by_port.get(port)
             sensor_key, fields = self._extract_sensor(item)
             card.update(sensor_key, fields)
-        self._status.update_from(frame)
         # --- 提取运行状态 ---
         self._emit_host_state(frame)
         # --- 转发最新帧给顶栏主机信息（HostStatusBar，Task 3 数据源） ---
@@ -221,7 +203,7 @@ class MonitorPage(QWidget):
             self._last_host_state = state
             self.host_state_changed.emit(state)
 
-    # --- 传感器更新 ---
+    # --- 传感器更新（Task 3：入口在侧边栏 sensor 图标，MainWindow._on_sensor_action 复用本方法） ---
     def _open_sensor_update(self) -> None:
         from ..dialogs.sensor_update_dialog import SensorUpdateDialog
         dlg = SensorUpdateDialog(self)
@@ -235,8 +217,10 @@ class MonitorPage(QWidget):
     def card_at(self, port: int) -> SensorCard:
         return self._cards[port]
 
-    def has_sensor_update_button(self) -> bool:
-        return not self._update_btn.isHidden()
+    def has_sensor_update_action(self) -> bool:
+        """该产品是否支持传感器更新（入口已移到侧边栏 sensor 图标，本页仅报告能力）。"""
+        prof = MONITOR_PROFILES.get(self._profile.name) if self._profile else None
+        return bool(prof and prof["sensor_update"])
 
     def has_connection_hint(self) -> bool:
         """连接提示条是否显示。"""

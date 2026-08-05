@@ -21,18 +21,20 @@ NEW_AI_FRAME = {
 }
 
 
-def test_new_ai_has_8_cards_and_update_button(qtbot):
+def test_new_ai_has_8_cards_and_update_action(qtbot):
+    """NEW-AI 支持传感器更新（入口已移到侧边栏 sensor 图标，本页仅报告能力）。"""
     p = MonitorPage(); qtbot.addWidget(p)
     p.set_profile(_profile("NEW-AI"))
     assert p.card_count() == 8
-    assert p.has_sensor_update_button() is True
+    assert p.has_sensor_update_action() is True
 
 
-def test_spark_ai_has_4_cards_no_update_button(qtbot):
+def test_spark_ai_has_4_cards_no_update_action(qtbot):
+    """SPARK-AI 不支持传感器更新，能力标记为 False。"""
     p = MonitorPage(); qtbot.addWidget(p)
     p.set_profile(_profile("SPARK-AI"))
     assert p.card_count() == 4
-    assert p.has_sensor_update_button() is False
+    assert p.has_sensor_update_action() is False
 
 
 def test_next_ai_has_2_cards(qtbot):
@@ -49,8 +51,8 @@ def test_render_updates_cards_and_status(qtbot):
     assert p.card_at(0).title_text() == "端口 0 · 颜色"
     assert ("cm", "255") in p.card_at(2).rows()
     assert p.card_at(1).rows() == []   # 空端口占位
-    assert p._status.field_text("版本") == "317"
-    assert p._status.field_text("IMU") == "60.31/179.39/-0.34"
+    # 主机信息（版本/IMU）已移到顶栏 HostStatusBar，帧转发链路由
+    # tests/gui/test_main_window.py::test_host_status_bar_updates_from_monitor_frame 覆盖。
 
 
 def test_on_frame_only_caches_latest(qtbot):
@@ -59,8 +61,7 @@ def test_on_frame_only_caches_latest(qtbot):
     p._on_frame({"deviceList": [], "version": 1})
     p._on_frame({"deviceList": [], "version": 2})   # 覆盖
     assert p.latest_frame()["version"] == 2         # 只保留最新
-    p._render()
-    assert p._status.field_text("版本") == "2"
+    p._render()                                     # 渲染不崩溃；主机信息由顶栏承接
 
 
 def test_unknown_product_shows_message_no_crash(qtbot):
