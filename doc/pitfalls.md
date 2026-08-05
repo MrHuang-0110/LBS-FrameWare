@@ -1,4 +1,4 @@
-# 坑（Pitfalls）
+﻿# 坑（Pitfalls）
 
 > 迁移自旧知识图谱记忆（2026-07-16）。新增坑请按"现象 → 根因 → 修复 → 验证位置"格式追加/就地更新。
 
@@ -24,3 +24,12 @@
 
 - **现象**：全量测试收尾时 PySide6/pytest-qt 在 Windows 解释器退出报段错误（码 -1073740791），**未改动代码上可复现**。
 - **处理**：非本项目 bug，GUI 测试按文件单独跑以容忍该退出问题。
+
+## Qt.Popup 测试 waitExposed 段错误
+- **现象**：pytest 中对 Qt.Popup 窗口调 `qtbot.waitExposed(popup)` 直接段错误（-1073740791）崩溃。
+- **修复**：改用 `popup.show(); qtbot.wait(20)` 激活布局后再断言（见 test_connection_popup.py::test_product_selector_keeps_visible_height_in_popup）。
+
+## QWidget 容器在竖向布局中高度塌陷为 0
+- **现象**：ProductSelector 放进 ConnectionPopup（QVBoxLayout）后容器高度被压成 0，触发器（30px）溢出与下方连接区重叠，视觉上产品选择"消失"。
+- **根因**：无内部 layout 的 QWidget 容器 sizeHint 无效 → 竖向布局给 0 高；与阶段 2"宽度被压成 0"同源（当时只修了宽度 `setMinimumWidth(168)`）。
+- **修复**：`setFixedHeight(_TRIGGER_H)` 对称修高度（product_selector.py:132-140）。教训：QWidget 容器放进不同布局方向时宽/高都要显式约束。
