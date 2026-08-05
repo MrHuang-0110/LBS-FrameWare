@@ -86,7 +86,7 @@ class FakeBleClient:
             FakeBleChar(write_uuid, ["write", "write-without-response"]),
         ]
 
-    def get_characteristics(self):
+    async def get_characteristics(self):
         return [(ch.uuid, ch.properties) for ch in self.services]
 
     def set_disconnected_callback(self, cb):

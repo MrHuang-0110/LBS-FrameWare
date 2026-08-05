@@ -198,7 +198,7 @@ def test_connect_half_open_disconnects_client_on_failure():
             self.disconnect_called = True
             self.is_connected = False
 
-        def get_characteristics(self):
+        async def get_characteristics(self):
             return [("aaa", ["read"])]  # 无 notify/write -> _find_transparent_chars 抛错
 
         async def start_notify(self, uuid, cb):

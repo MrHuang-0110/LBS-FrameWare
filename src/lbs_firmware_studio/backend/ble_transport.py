@@ -97,9 +97,13 @@ class _RealBleakClient:
     async def write_gatt_char(self, uuid, data, response: bool = False):
         await self._c.write_gatt_char(uuid, data, response=response)
 
-    def get_characteristics(self):
+    async def get_characteristics(self):
+        # 跨 bleak 版本稳定：get_services() 在所有版本均可用（client.services 属性仅新版
+        # 才有）。用户环境 bleak 版本旧 → 原 `self._c.services` 抛 AttributeError
+        # （"BleakClient object has no attribute"），连接失败。
+        services = await self._c.get_services()
         pairs = []
-        for svc in self._c.services:
+        for svc in services:
             for ch in svc.characteristics:
                 pairs.append((ch.uuid, list(ch.properties)))
         return pairs
@@ -170,7 +174,7 @@ class BleTransport:
         # 连上后的就绪步骤任一失败都属"半开链路"：先断开(吞异常)再上抛，
         # 避免残留 BLE 链路占用设备导致后续重连持续失败。
         try:
-            chars = self._client.get_characteristics()
+            chars = await self._client.get_characteristics()
             _ble_log(f"connect {self._address}; 特征值清单: " +
                      "; ".join(f"{u}={p}" for u, p in chars))
             self._notify_uuid, self._write_uuid, self._write_response = _find_transparent_chars(chars)
