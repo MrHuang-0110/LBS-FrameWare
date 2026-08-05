@@ -11,6 +11,12 @@ _LABELS = {
     "editor": "代码编辑", "monitor": "数据监控", "settings": "设置",
 }
 
+# E3：键盘焦点环（a11y），全部按钮共用；不参与图标着色逻辑
+_FOCUS_QSS = (
+    f"QToolButton:focus {{ border: 1px solid {theme.ACCENT_FOCUS};"
+    f" border-radius: {theme.RADIUS_SM}px; }}"
+)
+
 
 class ActivityBar(QWidget):
     current_changed = Signal(str)
@@ -40,10 +46,13 @@ class ActivityBar(QWidget):
         btn.setIconSize(QSize(24, 24))
         btn.setToolTip(_LABELS.get(key, key) + ("" if enabled else " · 即将推出"))
         btn.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
+        btn.setFocusPolicy(Qt.StrongFocus)   # E3：Tab 可达 + 焦点环
         color = theme.ICON_IDLE if enabled else theme.ICON_DISABLED
         btn.setIcon(qta.icon(icon_name, color=color))
         self._icon_colors[key] = color
-        btn.setStyleSheet("QToolButton { border: none; background: transparent; }")
+        btn.setStyleSheet(
+            f"QToolButton {{ border: none; background: transparent; }}"
+            f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
         btn.setEnabled(enabled)
         if enabled:
             btn.clicked.connect(lambda _=False, k=key: self.set_current(k))
@@ -75,13 +84,16 @@ class ActivityBar(QWidget):
                 color = theme.ICON_IDLE
             self._icon_colors[key] = color
             btn.setIcon(qta.icon(self._icon_names[key], color=color))
-            # 选中：左侧 2px 蓝亮条 + 轻背景
+            # 选中：左侧 2px ACCENT 亮条 + BG_HOVER 底；focus 环叠加（E3）
             if selected:
                 btn.setStyleSheet(
                     f"QToolButton {{ border: none; background: {theme.BG_HOVER};"
-                    f" border-left: 2px solid {theme.ACCENT}; }}")
+                    f" border-left: 2px solid {theme.ACCENT}; }}"
+                    f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
             else:
-                btn.setStyleSheet("QToolButton { border: none; background: transparent; }")
+                btn.setStyleSheet(
+                    f"QToolButton {{ border: none; background: transparent; }}"
+                    f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
 
     def current_key(self) -> str:
         return self._current

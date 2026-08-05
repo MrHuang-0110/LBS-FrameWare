@@ -20,3 +20,13 @@ def test_append_has_timestamp(qtbot):
     # 时间戳形如 HH:MM:SS，检查有冒号分隔的时间
     import re
     assert re.search(r"\d{2}:\d{2}:\d{2}", w.plain_text())
+
+
+def test_max_blocks_trims_overflow(qtbot):
+    w = LogView(max_blocks=3); qtbot.addWidget(w)
+    for i in range(10):
+        w.append(f"line{i}")
+    assert w.document().blockCount() <= 3
+    txt = w.plain_text()
+    assert "line9" in txt          # 保留最近行
+    assert "line0" not in txt      # 旧行被裁剪

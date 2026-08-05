@@ -13,8 +13,8 @@ class HostStatusBar(QFrame):
         self._fields: list[tuple[str, str]] = []
         self._value_labels: dict[str, QLabel] = {}
         self._lay = QHBoxLayout(self)
-        self._lay.setContentsMargins(12, 6, 12, 6)
-        self._lay.setSpacing(18)
+        self._lay.setContentsMargins(theme.SPACE_MD, theme.SPACE_SM, theme.SPACE_MD, theme.SPACE_SM)
+        self._lay.setSpacing(theme.SPACE_LG)
 
     def set_fields(self, status_fields: list[tuple[str, str]]) -> None:
         # 清空旧字段
@@ -29,7 +29,10 @@ class HostStatusBar(QFrame):
             cap = QLabel(f"{label}:")
             cap.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
             val = QLabel("--")
-            val.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; background:transparent;")
+            # E5：值区等宽字体防数字抖动；颜色走令牌
+            val.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY}; background:transparent;"
+                f" font-family:{theme.MONO_FONT};")
             self._lay.addWidget(cap)
             self._lay.addWidget(val)
             self._value_labels[label] = val

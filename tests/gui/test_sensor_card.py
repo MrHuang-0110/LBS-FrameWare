@@ -8,6 +8,18 @@ def test_empty_state_title_no_rows(qtbot):
     assert c.rows() == []
 
 
+def test_empty_state_shows_no_device_hint(qtbot):
+    c = SensorCard(3); qtbot.addWidget(c)
+    c.update(None, {})
+    assert c.empty_hint() == "无设备"
+
+
+def test_no_device_hint_cleared_when_sensor_present(qtbot):
+    c = SensorCard(0); qtbot.addWidget(c)
+    c.update("color", {"r": 1})
+    assert c.empty_hint() == ""
+
+
 def test_sensor_title_uses_chinese_name(qtbot):
     c = SensorCard(2); qtbot.addWidget(c)
     c.update("color", {"r": 10, "g": 20, "b": 30, "lux": 1615})

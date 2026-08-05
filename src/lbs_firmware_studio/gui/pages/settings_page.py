@@ -1,9 +1,12 @@
-"""设置页：编辑编译器路径 + 每产品固件目录，保存写回 products.yaml。"""
+"""设置页：编辑编译器路径 + 每产品固件目录，保存写回 products.yaml。
+布局令牌化（设计 §4.4/D2/D5）：统一 margins SPACE_LG / spacing SPACE_MD，
+标题 FONT_TITLE，保存按钮右对齐，状态消息 SUCCESS 色。"""
 from __future__ import annotations
 from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QFileDialog, QGroupBox)
 from ...backend.profile import save_profiles
+from .. import theme
 
 
 class SettingsPage(QWidget):
@@ -21,24 +24,42 @@ class SettingsPage(QWidget):
         self._fw_edits: dict[str, QLineEdit] = {}
         fw_group = QGroupBox("固件目录（每产品）")
         fw_lay = QVBoxLayout(fw_group)
+        fw_lay.setSpacing(theme.SPACE_SM)
         for name, cfg in raw_config.get("products", {}).items():
             edit = QLineEdit(str(cfg.get("firmware_dir", "")))
             edit.setReadOnly(True)
             btn = QPushButton("浏览…")
             btn.clicked.connect(lambda _=False, n=name: self._browse_firmware(n))
+            name_lbl = QLabel(name)
+            name_lbl.setFixedWidth(80)   # 产品名左对齐固定宽（§4.4）
             row = QHBoxLayout()
-            row.addWidget(QLabel(name)); row.addWidget(edit, 1); row.addWidget(btn)
+            row.setSpacing(theme.SPACE_SM)
+            row.addWidget(name_lbl); row.addWidget(edit, 1); row.addWidget(btn)
             fw_lay.addLayout(row)
             self._fw_edits[name] = edit
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("设置"))
-        row = QHBoxLayout(); row.addWidget(QLabel("编译器路径:"))
+        lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
+        lay.setSpacing(theme.SPACE_MD)
+        title = QLabel("设置")
+        title.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY}; font-size:{theme.FONT_TITLE}px;"
+            f" font-weight:{theme.WEIGHT_BOLD}; background:transparent;")
+        lay.addWidget(title)
+        subtitle = QLabel("配置编译器路径与各产品固件目录")
+        subtitle.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
+        lay.addWidget(subtitle)
+        row = QHBoxLayout(); row.setSpacing(theme.SPACE_SM)
+        row.addWidget(QLabel("编译器路径:"))
         row.addWidget(self._compiler, 1); row.addWidget(browse)
         lay.addLayout(row)
         lay.addWidget(fw_group)
-        lay.addWidget(save_btn)
-        lay.addWidget(self._status)
+        # D5：保存按钮右对齐，状态消息同行左侧（SUCCESS 色）
+        self._status.setStyleSheet(f"color:{theme.SUCCESS}; background:transparent;")
+        save_row = QHBoxLayout(); save_row.setSpacing(theme.SPACE_MD)
+        save_row.addWidget(self._status, 1)
+        save_row.addWidget(save_btn)
+        lay.addLayout(save_row)
         lay.addStretch()
 
     def _browse(self) -> None:
