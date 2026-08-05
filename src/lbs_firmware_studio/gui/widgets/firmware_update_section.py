@@ -1,0 +1,166 @@
+"""固件更新区组件：固件源 + 开始按钮 + 进度条 + 单行进度文本（可复用）。
+
+布局重构 v3 Task 2：把 FirmwarePage 的固件更新区抽为独立组件，ConnectionPopup 与
+FirmwarePage 复用（FirmwarePage 若 Task 3 删除则仅浮窗使用）。
+- 固件源目录：只读输入框，由 set_profile(profile)（页面场景，含「待发送」摘要）或
+  set_firmware_dir_getter(getter)（浮窗场景，目录来自外部 getter）填充。
+- 开始按钮：主色按钮（QSS #primary）+ 二次确认框（B2），Yes 才发 start_requested。
+- 进度：进度条（0-100，format 百分比）+ 单行进度文本（最后日志 + 百分比合成）。
+- 深色主题全部走 theme 令牌；图标统一 qta fa5s.*。
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                               QPushButton, QProgressBar, QLineEdit,
+                               QMessageBox)
+from PySide6.QtCore import Signal
+import qtawesome as qta
+
+from .. import theme
+
+
+class FirmwareUpdateSection(QWidget):
+    """固件更新区：固件源选择 + 开始按钮 + 进度条 + 单行进度文本。"""
+
+    start_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._profile = None
+        self._dir_getter: Callable | None = None
+        self._dir_edit = QLineEdit(); self._dir_edit.setReadOnly(True)
+        # 「待发送」摘要：仅页面场景（set_profile）显示；浮窗场景无 profile 时隐藏
+        self._summary = QLabel("待发送: -")
+        self._summary.hide()
+        # 「开始固件更新」：主色按钮（QSS #primary = ACCENT 底 + TEXT_ON_ACCENT 前景，
+        # 图标 fa5s.download、ICON_MD），宽度限 180px，点击弹二次确认（B2）。
+        self._start = QPushButton("开始固件更新"); self._start.setObjectName("primary")
+        self._start.setIcon(qta.icon("fa5s.download", color=theme.TEXT_ON_ACCENT))
+        self._start.setMaximumWidth(180)
+        self._start.clicked.connect(self.confirm_start)
+        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT），文字随状态变色
+        self._stage_dot = QLabel()
+        self._stage = QLabel()
+        self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
+        self._bar.setFormat("0%")
+        # 单行当前进度：日志末条 + 进度百分比合成（TEXT_SECONDARY + mono 字体），
+        # 无活动时显示「就绪」。
+        self._progress_text = QLabel(theme.STAGE_TEXT["idle"])
+        self._progress_text.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-family: {theme.MONO_FONT};")
+        self._last_log: str | None = None
+        self._last_pct: int | None = None
+
+        # 布局：目录行 / 摘要 / 操作行（按钮 + 阶段 chip）/ 进度条 / 单行进度文本
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(theme.SPACE_SM)
+        row = QHBoxLayout(); row.setSpacing(theme.SPACE_SM)
+        row.addWidget(QLabel("目录:"))
+        row.addWidget(self._dir_edit, 1)
+        lay.addLayout(row)
+        lay.addWidget(self._summary)
+        op_row = QHBoxLayout(); op_row.setSpacing(theme.SPACE_SM)
+        op_row.addWidget(self._start)
+        op_row.addStretch(1)
+        op_row.addWidget(self._stage_dot)
+        op_row.addWidget(self._stage)
+        lay.addLayout(op_row)
+        lay.addWidget(self._bar)
+        lay.addWidget(self._progress_text)
+
+        self.on_state("idle")  # 初始化阶段 chip（色点 + 文案 + 颜色）与进度文本
+
+    # ---- 固件源 ----
+    def set_profile(self, profile) -> None:
+        """页面场景：设置产品 profile，目录/摘要由 profile 填充。"""
+        self._profile = profile
+        self._dir_edit.setText(str(profile.firmware_dir))
+        self._summary.setText("待发送: " + ", ".join(profile.folders))
+        self._summary.show()
+
+    def set_firmware_dir_getter(self, getter: Callable | None) -> None:
+        """浮窗场景：设置固件目录 getter（返回固件路径 str/Path），立即刷新目录文本。"""
+        self._dir_getter = getter
+        if getter is not None:
+            self._dir_edit.setText(str(getter()))
+
+    def set_source_locked(self, locked: bool) -> None:
+        """锁定固件源选择（只读目录框禁用）。"""
+        self._dir_edit.setEnabled(not locked)
+
+    # ---- 开始按钮 / 二次确认 ----
+    def set_busy(self, busy: bool) -> None:
+        self._start.setEnabled(not busy)
+
+    def confirm_start(self) -> None:
+        """开始固件更新二次确认（B2）：No 不发信号，Yes 才发 start_requested。"""
+        if self._profile is not None:
+            detail = (f"目标: {self._profile.firmware_dir}\n待发送: "
+                      + ", ".join(self._profile.folders))
+        elif self._dir_getter is not None:
+            detail = f"目标: {self._dir_getter()}"
+        else:
+            detail = "未选择产品"
+        answer = QMessageBox.question(
+            self, "确认开始固件更新",
+            f"确认开始固件更新？\n\n{detail}",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes:
+            self.start_requested.emit()
+
+    # ---- 进度回填（deployer 信号接线：progress/log/state_changed）----
+    def on_progress(self, done: int, total: int) -> None:
+        pct = int(done * 100 / total) if total else 0
+        self.set_progress_pct(pct)
+
+    def set_progress_pct(self, pct: int) -> None:
+        """直接设置进度百分比（浮窗回填接口的基础）。"""
+        self._bar.setValue(pct)
+        self._bar.setFormat(f"{pct}%")  # B10：进度条显示百分比
+        self._last_pct = pct
+        self._refresh_progress_text()
+
+    def on_state(self, state: str) -> None:
+        color = theme.state_color(state)
+        self._stage_dot.setPixmap(qta.icon("fa5s.circle", color=color)
+                                  .pixmap(theme.ICON_SM, theme.ICON_SM))
+        self._stage.setText(theme.STAGE_TEXT.get(state, state))
+        self._stage.setStyleSheet(f"color: {color}; background: transparent;")
+        # done/error 保留「最后日志 + 进度」快照（成功/失败语义）；
+        # idle 与新一轮活动状态(compiling/connecting/entering_upgrade/reconnecting/
+        # transfering)都会清掉上一轮残留文本并刷新为「就绪」——deployer 新一轮从
+        # connecting 开始（不经 idle），不清空会让第二轮开头显示上一轮残留。
+        if state not in ("done", "error"):
+            self._last_log = None
+            self._last_pct = None
+            self._refresh_progress_text()
+
+    def on_log(self, msg: str) -> None:
+        self._last_log = msg
+        self._refresh_progress_text()
+
+    def set_current_text(self, text: str) -> None:
+        """直接覆盖单行进度文本（浮窗回填接口的基础）。"""
+        self._progress_text.setText(text)
+
+    def _refresh_progress_text(self) -> None:
+        """单行当前进度 = 最后一条日志 + 进度百分比；两者皆无时显示「就绪」。"""
+        if self._last_pct is not None:
+            if self._last_log:
+                self._progress_text.setText(f"{self._last_log} {self._last_pct}%")
+            else:
+                self._progress_text.setText(f"{self._last_pct}%")
+        else:
+            self._progress_text.setText(self._last_log or theme.STAGE_TEXT["idle"])
+
+    # --- 测试辅助访问器 ---
+    def start_button(self): return self._start
+    def stage_dot(self): return self._stage_dot
+    def summary_text(self): return self._summary.text()
+    def firmware_dir_text(self): return self._dir_edit.text()
+    def progress_value(self): return self._bar.value()
+    def stage_text(self): return self._stage.text()
+    def current_progress_text(self): return self._progress_text.text()

@@ -5,9 +5,10 @@
 连接区竖向堆叠、set_locked 禁用产品选择与连接按钮。
 """
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from lbs_firmware_studio.backend.profile import DeviceProfile
+from lbs_firmware_studio.gui import theme
 from lbs_firmware_studio.gui.widgets.connection_popup import ConnectionPopup
 from lbs_firmware_studio.gui.widgets.connection_selector import ConnectionSelector
 
@@ -133,3 +134,77 @@ def test_set_locked_blocks_radio_disconnect_while_connected(qtbot):
     conn._rb_serial.click()
     assert t2.closed is True
     assert conn.is_connected() is False
+
+
+# ===== Task 2: 浮窗内嵌固件更新区 + 传感器更新按钮 =====
+
+def test_firmware_section_controls_exist(qtbot):
+    """浮窗含固件更新区：开始按钮/进度条/单行进度文本 + 传感器更新按钮。"""
+    popup = _popup(qtbot)
+    fw = popup.firmware_section()
+    assert fw.start_button().text() == "开始固件更新"
+    assert fw.progress_value() == 0
+    assert fw.current_progress_text() == theme.STAGE_TEXT["idle"]
+    assert popup._sensor_btn.text() == "传感器更新"
+    assert popup._sensor_btn.icon() is not None
+
+
+def test_firmware_section_has_dir_edit(qtbot):
+    """固件源目录只读框存在（可经 set_firmware_dir_getter 填充）。"""
+    popup = _popup(qtbot)
+    fw = popup.firmware_section()
+    assert fw._dir_edit.isReadOnly() is True
+
+
+def test_set_firmware_dir_getter_updates_dir_text(qtbot):
+    """set_firmware_dir_getter 透传给固件区，目录文本刷新为 getter 返回值。"""
+    popup = _popup(qtbot)
+    popup.set_firmware_dir_getter(lambda: "C:/fw/lib/NEW-AI")
+    assert "fw/lib/NEW-AI" in popup.firmware_section().firmware_dir_text().replace("\\", "/")
+
+
+def test_start_button_emits_start_firmware_requested(qtbot, monkeypatch):
+    """点开始按钮（确认框 Yes）→ 发 start_firmware_requested。"""
+    popup = _popup(qtbot)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    with qtbot.waitSignal(popup.start_firmware_requested, timeout=500):
+        popup.firmware_section().start_button().click()
+
+
+def test_sensor_button_emits_sensor_update_requested(qtbot):
+    """点传感器更新按钮 → 发 sensor_update_requested。"""
+    popup = _popup(qtbot)
+    with qtbot.waitSignal(popup.sensor_update_requested, timeout=500):
+        popup._sensor_btn.click()
+
+
+def test_set_firmware_progress_updates_bar(qtbot):
+    """set_firmware_progress(pct) 回填进度条。"""
+    popup = _popup(qtbot)
+    popup.set_firmware_progress(45)
+    assert popup.firmware_section().progress_value() == 45
+
+
+def test_set_firmware_text_updates_single_line(qtbot):
+    """set_firmware_text(text) 回填单行进度文本。"""
+    popup = _popup(qtbot)
+    popup.set_firmware_text("正在发送 app/")
+    assert "app/" in popup.firmware_section().current_progress_text()
+
+
+def test_set_locked_disables_firmware_and_sensor(qtbot):
+    """set_locked 覆盖新增控件：固件开始按钮/固件源选择/传感器按钮全部禁用。"""
+    popup = _popup(qtbot)
+    popup.set_firmware_dir_getter(lambda: "C:/fw/lib")
+    fw = popup.firmware_section()
+    assert fw.start_button().isEnabled() is True
+    assert fw._dir_edit.isEnabled() is True
+    assert popup._sensor_btn.isEnabled() is True
+    popup.set_locked(True)
+    assert fw.start_button().isEnabled() is False
+    assert fw._dir_edit.isEnabled() is False
+    assert popup._sensor_btn.isEnabled() is False
+    popup.set_locked(False)
+    assert fw.start_button().isEnabled() is True
+    assert fw._dir_edit.isEnabled() is True
+    assert popup._sensor_btn.isEnabled() is True
