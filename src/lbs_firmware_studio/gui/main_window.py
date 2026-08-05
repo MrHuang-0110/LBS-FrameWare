@@ -72,7 +72,7 @@ class MainWindow(QWidget):
         self._popup.set_firmware_dir_getter(lambda: getattr(self._profile, "firmware_dir", ""))
         conn = self._popup.connection()
         # BLE 扫描失败 → 状态栏显示原因（无需悬停红点，用户反馈：只看到感叹号不知原因）
-        conn.scan_failed.connect(lambda msg: self._status.set_deploy_text(f"扫描失败: {msg}"))
+        conn.scan_failed.connect(self._on_scan_failed)
         # _conn/_product_selector 兼容引用：既有测试与内部使用点（下发门禁/运行按钮等）沿用
         self._conn = conn
         self._product_selector = self._popup._product
@@ -389,6 +389,10 @@ class MainWindow(QWidget):
         用户要求可见 DEBUG 数据：'waiting for ACK' 类消息即传输进展，'timeout waiting
         for 0x43' 即卡点；浮窗关闭后仍可见。超长文本悬停可看完整内容）。"""
         self._status.set_deploy_text(msg)
+
+    def _on_scan_failed(self, msg: str) -> None:
+        """BLE 扫描失败原因 → 状态栏（命名方法接线，与其余信号一致；无需悬停红点）。"""
+        self._status.set_deploy_text(f"扫描失败: {msg}")
 
     def _on_finished(self):
         self._busy = False
