@@ -17,6 +17,7 @@ _RENDER_INTERVAL_MS = 100
 
 class MonitorPage(QWidget):
     host_state_changed = Signal(str)
+    frame_rendered = Signal(object)   # 每帧节流渲染后转发最新帧（Task 3 顶栏主机信息数据源）
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -190,6 +191,8 @@ class MonitorPage(QWidget):
         self._status.update_from(frame)
         # --- 提取运行状态 ---
         self._emit_host_state(frame)
+        # --- 转发最新帧给顶栏主机信息（HostStatusBar，Task 3 数据源） ---
+        self.frame_rendered.emit(frame)
 
     @staticmethod
     def _extract_sensor(item: "dict | None"):

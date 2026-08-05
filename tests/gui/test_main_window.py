@@ -31,6 +31,8 @@ def test_nav_items_present_and_locked(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     labels = w.nav_labels()
     assert "固件与监控" in labels and "代码编辑" in labels and "设置" in labels
+    # 布局重构 v2：device/sensor 为浮窗触发入口（设备连接/传感器更新），也在侧边栏
+    assert "设备连接" in labels and "传感器更新" in labels
     assert "脚本下发" not in labels          # scripts 项已隐藏（合并进代码编辑页）
     assert "固件更新" not in labels          # 固件更新已合并进"固件与监控"
     assert "数据监控" not in labels          # 数据监控已合并进"固件与监控"
@@ -206,10 +208,49 @@ def test_monitor_start_button_hidden(qtbot, tmp_path):
 
 
 def test_product_selector_min_width_after_show(qtbot, tmp_path):
-    """BUG1 回归：ProductSelector 容器不能被顶栏布局压成 0 宽，show 后 width>=168。"""
+    """BUG1 回归：浮窗内 ProductSelector 不能被布局压成 0 宽，popup show 后 width>=168。"""
     from PySide6.QtWidgets import QApplication
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml")
     qtbot.addWidget(w)
-    w.show()
+    w._popup.show()
     QApplication.processEvents()
     assert w._product_selector.width() >= 168
+
+
+# ---- 布局重构 v2：顶栏主机信息 + 设备/传感器浮窗入口 ----
+def test_topbar_shows_host_status_bar(qtbot, tmp_path):
+    """顶栏只放主机信息：host_bar() 访问器返回 HostStatusBar，字段随产品初始化。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    bar = w.host_bar()
+    assert bar is not None
+    assert bar.field_text("版本") == "--"        # 字段已按 NEW-AI status_fields 挂载，初始未连接为占位
+    assert bar.field_text("运行状态") == "--"
+
+
+def test_host_status_bar_updates_from_monitor_frame(qtbot, tmp_path):
+    """监控页帧渲染转发到顶栏 HostStatusBar（主机信息数据流）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    frame = {"deviceList": [], "version": 317,
+             "mem": {"yaw": "60.31", "pitch": "179.39", "roll": "-0.34"}}
+    w._monitor.frame_rendered.emit(frame)
+    assert w.host_bar().field_text("版本") == "317"
+    assert w.host_bar().field_text("IMU") == "60.31/179.39/-0.34"
+
+
+def test_device_icon_opens_popup(qtbot, tmp_path):
+    """点 ActivityBar 的 device 图标弹出设备连接浮窗（Qt.Popup 顶层窗口）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    assert w.popup_visible() is False
+    w._activity._buttons["device"].click()
+    assert w.popup_visible() is True
+
+
+def test_sensor_icon_opens_dialog(qtbot, tmp_path, monkeypatch):
+    """点 ActivityBar 的 sensor 图标弹出传感器更新对话框（复用监控页对话框）。"""
+    opened = []
+    monkeypatch.setattr(
+        "lbs_firmware_studio.gui.dialogs.sensor_update_dialog.SensorUpdateDialog.exec",
+        lambda self: opened.append(True))
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._activity._buttons["sensor"].click()
+    assert opened == [True]
