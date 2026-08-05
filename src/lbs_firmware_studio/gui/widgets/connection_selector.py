@@ -187,12 +187,13 @@ class ConnectionSelector(QWidget):
     @Slot(object)
     def _on_scan_done(self, devices) -> None:
         self._populate_ble(devices)
+        self._update_dot(False)   # 扫描成功清除上一轮失败红点/提示（M1）
         self._reset_scan_btn()
 
     @Slot(str)
     def _on_scan_failed(self, msg: str) -> None:
         # 扫描失败可见化：状态点红色 + tooltip 显示原因（用户反馈：蓝牙扫描不了东西无提示）
-        self._update_dot(False, error=True, msg=f"扫描失败: {msg}")
+        self._update_dot(False, error=True, msg=msg, error_prefix="扫描失败")
         self._reset_scan_btn()
 
     def _reset_scan_btn(self) -> None:
@@ -328,13 +329,15 @@ class ConnectionSelector(QWidget):
         self._rb_ble.setEnabled(enabled)
         self._stack.setEnabled(enabled)
 
-    def _update_dot(self, connected: bool, error: bool = False, msg: str = "") -> None:
-        """连接状态点：矢量图标（A3），颜色走令牌，尺寸 ICON_MD。"""
+    def _update_dot(self, connected: bool, error: bool = False, msg: str = "",
+                    error_prefix: str = "连接失败") -> None:
+        """连接状态点：矢量图标（A3），颜色走令牌，尺寸 ICON_MD。
+        error_prefix 区分失败来源（连接失败 / 扫描失败），避免「连接失败: 扫描失败: x」歧义。"""
         if connected:
             color, name, tip = theme.SUCCESS, "fa5s.circle", "已连接"
         elif error:
             color, name = theme.ERROR, "fa5s.exclamation-triangle"
-            tip = f"连接失败: {msg}" if msg else "连接失败"
+            tip = f"{error_prefix}: {msg}" if msg else error_prefix
         else:
             color, name, tip = theme.ICON_DISABLED, "fa5s.circle-notch", "未连接"
         self._dot.setPixmap(qta.icon(name, color=color).pixmap(theme.ICON_MD, theme.ICON_MD))

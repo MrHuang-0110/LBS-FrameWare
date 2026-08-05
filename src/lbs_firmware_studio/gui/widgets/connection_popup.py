@@ -37,7 +37,7 @@ class ConnectionPopup(QWidget):
     """设备连接浮窗：产品选择 + 连接区 + 固件更新区 + 传感器更新按钮竖向堆叠。"""
 
     product_changed = Signal(str)          # 透传 ProductSelector.product_changed
-    start_firmware_requested = Signal()    # 固件更新区开始按钮（确认框 Yes 后）
+    start_firmware_requested = Signal()    # 固件更新区开始按钮（点击直接触发，无确认框）
     sensor_update_requested = Signal()     # 传感器更新按钮（弹 SensorUpdateDialog 由 MainWindow 处理）
 
     def __init__(self, profiles: dict, current: str,

@@ -46,8 +46,7 @@ def test_scan_failure_shows_error_on_dot(app, qtbot):
     cs.set_kind("ble")
     cs.scan_ble()
     qtbot.waitUntil(lambda: cs._ble_scan_btn.text() == "扫描", timeout=2000)  # 扫描线程结束
-    assert "扫描失败" in cs._dot.toolTip()
-    assert "adapter off" in cs._dot.toolTip()
+    assert cs._dot.toolTip() == "扫描失败: adapter off"   # 前缀不混淆为「连接失败」（I1）
 
 
 def test_make_transport_by_kind(app, qtbot):

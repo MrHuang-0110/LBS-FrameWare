@@ -2,7 +2,6 @@ from lbs_firmware_studio.gui.pages.firmware_page import FirmwarePage
 from lbs_firmware_studio.backend.profile import DeviceProfile
 from lbs_firmware_studio.gui import theme
 from pathlib import Path
-from PySide6.QtWidgets import QMessageBox
 
 
 def _profile():
@@ -19,11 +18,10 @@ def test_set_profile_shows_folders_and_dir(qtbot):
     assert "NEW-AI/fwlib" in w.firmware_dir_text().replace("\\", "/")
 
 
-def test_start_button_emits_signal(qtbot, monkeypatch):
-    """点击开始按钮，确认框返回 Yes 后触发 start_requested。"""
+def test_start_button_emits_signal(qtbot):
+    """点击开始按钮直接触发 start_requested（无确认框，用户要求）。"""
     w = FirmwarePage(); qtbot.addWidget(w)
     w.set_profile(_profile())
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     with qtbot.waitSignal(w.start_requested, timeout=500):
         w.start_button().click()
 

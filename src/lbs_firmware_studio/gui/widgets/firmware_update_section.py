@@ -4,8 +4,10 @@
 FirmwarePage 复用（FirmwarePage 若 Task 3 删除则仅浮窗使用）。
 - 固件源目录：只读输入框，由 set_profile(profile)（页面场景，含「待发送」摘要）或
   set_firmware_dir_getter(getter)（浮窗场景，目录来自外部 getter）填充。
-- 开始按钮：主色按钮（QSS #primary）+ 二次确认框（B2），Yes 才发 start_requested。
-- 进度：进度条（0-100，format 百分比）+ 单行进度文本（最后日志 + 百分比合成）。
+- 开始按钮：主色按钮（QSS #primary），全宽 30px（与连接按钮同尺寸），点击**直接发
+  start_requested**（v3 调整：不再弹二次确认，用户要求）。
+- 进度：进度条（0-100，format 百分比）+ 单行进度文本（最后日志 + 百分比合成）；
+  进度条在底部（bar_row 内含阶段 chip 右侧）。
 - 深色主题全部走 theme 令牌；图标统一 qta fa5s.*。
 """
 from __future__ import annotations
@@ -23,7 +25,7 @@ from .. import theme
 class FirmwareUpdateSection(QWidget):
     """固件更新区：固件源选择 + 开始按钮 + 进度条 + 单行进度文本。"""
 
-    start_requested = Signal()
+    start_requested = Signal()   # 开始固件更新（点击直接触发，无确认框）
 
     def __init__(self, parent=None):
         super().__init__(parent)
