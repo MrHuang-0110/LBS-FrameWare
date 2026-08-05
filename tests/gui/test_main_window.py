@@ -246,11 +246,56 @@ def test_device_icon_opens_popup(qtbot, tmp_path):
 
 
 def test_sensor_icon_opens_dialog(qtbot, tmp_path, monkeypatch):
-    """点 ActivityBar 的 sensor 图标弹出传感器更新对话框（复用监控页对话框）。"""
+    """点 ActivityBar 的 sensor 图标弹出传感器更新对话框（守卫：监控中 + 产品支持）。"""
     opened = []
     monkeypatch.setattr(
         "lbs_firmware_studio.gui.dialogs.sensor_update_dialog.SensorUpdateDialog.exec",
         lambda self: opened.append(True))
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._monitor._monitoring = True   # 模拟监控中（守卫通过才弹对话框）
     w._activity._buttons["sensor"].click()
     assert opened == [True]
+
+
+def test_sensor_icon_blocked_when_not_monitoring(qtbot, tmp_path, monkeypatch):
+    """守卫：未监控（未连接）时点 sensor 图标不弹对话框，改为提示先连接并开始监控。"""
+    from PySide6.QtWidgets import QMessageBox
+    opened, informed = [], []
+    monkeypatch.setattr(
+        "lbs_firmware_studio.gui.dialogs.sensor_update_dialog.SensorUpdateDialog.exec",
+        lambda self: opened.append(True))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: informed.append(a))
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._activity._buttons["sensor"].click()   # 未监控
+    assert opened == []                        # 不弹对话框
+    assert informed                            # 提示「请先连接并开始监控」
+    assert any("连接" in str(x) for x in informed)
+
+
+def test_sensor_icon_blocked_when_product_unsupported(qtbot, tmp_path, monkeypatch):
+    """守卫：产品不支持 sensor_update（SPARK-AI）时提示不支持，不弹对话框。"""
+    from PySide6.QtWidgets import QMessageBox
+    opened, informed = [], []
+    monkeypatch.setattr(
+        "lbs_firmware_studio.gui.dialogs.sensor_update_dialog.SensorUpdateDialog.exec",
+        lambda self: opened.append(True))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: informed.append(a))
+    spark = DeviceProfile(name="SPARK-AI", protocol="custom_frame", display_ports=4,
+                          folders=["app"], firmware_dir=Path("./x"))
+    w = MainWindow(spark, _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._monitor._monitoring = True   # 监控中，但产品不支持
+    w._activity._buttons["sensor"].click()
+    assert opened == []
+    assert any("不支持" in str(x) for x in informed)
+
+
+def test_disconnect_clears_host_bar(qtbot, tmp_path):
+    """断开连接时顶栏 HostStatusBar 清空为占位 '--'（不残留最后帧值）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    frame = {"deviceList": [], "version": 317,
+             "mem": {"yaw": "60.31", "pitch": "179.39", "roll": "-0.34"}}
+    w._monitor.frame_rendered.emit(frame)
+    assert w.host_bar().field_text("版本") == "317"     # 先有值
+    w._on_connection_changed(False)                       # 断开
+    assert w.host_bar().field_text("版本") == "--"        # 清空为占位
+    assert w.host_bar().field_text("IMU") == "--"

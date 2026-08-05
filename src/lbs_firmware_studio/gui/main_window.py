@@ -5,7 +5,7 @@
 产品切换：设备浮窗内 ProductSelector 触发，MainWindow 窗内重建页面栈（设计 §4.2）。"""
 from __future__ import annotations
 from pathlib import Path
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFrame,
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QStackedWidget, QMessageBox, QSplitter)
 from PySide6.QtCore import QThread, Qt
 from . import theme
@@ -235,12 +235,19 @@ class MainWindow(QWidget):
         self._popup.raise_()
 
     def _on_sensor_action(self) -> None:
-        """sensor 图标：弹传感器更新对话框（复用监控页既有对话框与数据源）。"""
+        """sensor 图标：守卫（监控中 + 产品支持 sensor_update）通过才弹对话框。
+        绕过守卫在未连接/不支持时下发会抛错（review Task 3 Minor）。"""
         monitor = getattr(self, "_monitor", None)
         if monitor is None:
             return
         if self._popup.isVisible():
             self._popup.hide()
+        if not monitor.is_monitoring():
+            QMessageBox.information(self, "提示", "请先连接并开始监控")
+            return
+        if not monitor.has_sensor_update_action():
+            QMessageBox.information(self, "提示", "当前产品不支持传感器更新")
+            return
         monitor._open_sensor_update()
 
     def _on_connection_changed(self, connected: bool) -> None:
@@ -253,6 +260,7 @@ class MainWindow(QWidget):
             monitor.start_monitor()   # 连接成功即自动监控，无需手动按钮
         else:
             monitor.stop_monitor()
+            self._host_bar.reset()    # 断开时清空顶栏主机信息，避免残留最后帧值
         self._update_deploy_buttons()
 
     def _on_run_toggle(self):

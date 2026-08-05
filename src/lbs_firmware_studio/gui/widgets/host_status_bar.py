@@ -38,6 +38,11 @@ class HostStatusBar(QFrame):
             self._value_labels[label] = val
         self._lay.addStretch(1)
 
+    def reset(self) -> None:
+        """把所有字段值重置为占位 '--'（断开连接/复位时调用），字段挂载不变。"""
+        for label in self._value_labels:
+            self._value_labels[label].setText("--")
+
     def update_from(self, frame: dict) -> None:
         for label, path in self._fields:
             raw = get_by_path(frame, path)

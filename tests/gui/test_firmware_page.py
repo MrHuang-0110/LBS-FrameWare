@@ -139,3 +139,35 @@ def test_on_state_idle_resets_progress_text(qtbot):
     w.on_progress(50, 100)
     w.on_state("idle")
     assert w.current_progress_text() == theme.STAGE_TEXT["idle"]
+
+
+def test_on_state_connecting_resets_previous_round(qtbot):
+    """新一轮开始（connecting，不经 idle）清除上一轮残留文本并刷新为「就绪」。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_log("发送 A.wav")      # 第一轮残留
+    w.on_progress(50, 100)
+    w.on_state("connecting")    # 第二轮开始
+    assert w.current_progress_text() == theme.STAGE_TEXT["idle"]
+    assert "A.wav" not in w.current_progress_text()
+    assert "50%" not in w.current_progress_text()
+
+
+def test_on_state_transfering_resets_previous_round(qtbot):
+    """其它活动状态（transfering）同样清空上一轮残留，不破坏新进度累计。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_log("旧日志")
+    w.on_progress(20, 100)
+    w.on_state("transfering")
+    assert w.current_progress_text() == theme.STAGE_TEXT["idle"]
+    w.on_progress(45, 100)      # 新一轮进度照常累计
+    assert "45%" in w.current_progress_text()
+
+
+def test_on_state_done_keeps_last_log_snapshot(qtbot):
+    """done 保留「最后日志 + 进度」快照（成功语义），不被新一轮连接清空前仍可见。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_log("发送 B.wav")
+    w.on_progress(100, 100)
+    w.on_state("done")
+    assert "B.wav" in w.current_progress_text()
+    assert "100%" in w.current_progress_text()

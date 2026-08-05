@@ -101,7 +101,11 @@ class FirmwarePage(QWidget):
                                   .pixmap(theme.ICON_SM, theme.ICON_SM))
         self._stage.setText(theme.STAGE_TEXT.get(state, state))
         self._stage.setStyleSheet(f"color: {color}; background: transparent;")
-        if state == "idle":  # 无活动：重置单行进度文本为「就绪」
+        # done/error 保留「最后日志 + 进度」快照（成功/失败语义）；
+        # idle 与新一轮活动状态(compiling/connecting/entering_upgrade/reconnecting/
+        # transfering)都会清掉上一轮残留文本并刷新为「就绪」——deployer 新一轮从
+        # connecting 开始（不经 idle），不清空会让第二轮开头显示上一轮残留。
+        if state not in ("done", "error"):
             self._last_log = None
             self._last_pct = None
             self._refresh_progress_text()
