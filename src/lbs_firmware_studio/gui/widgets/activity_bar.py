@@ -26,12 +26,17 @@ class ActivityBar(QWidget):
     action_triggered = Signal(str)   # 浮窗类图标（popup keys）点击
 
     def __init__(self, items: list[tuple[str, str, bool]], parent=None,
-                 popup_keys: set[str] | None = None):
+                 popup_keys: set[str] | None = None,
+                 settings_key: str | None = None):
         super().__init__(parent)
         self.setFixedWidth(48)
         self.setStyleSheet(f"background: {theme.BG_BAR};")
         self._items = items
         self._popup_keys = set(popup_keys) if popup_keys is not None else set(_POPUP_KEYS)
+        # 底部设置键：key 必须存在于 items（图标由 items 提供）；不存在则视为未指定
+        if settings_key is not None and not any(k == settings_key for k, _, _ in items):
+            settings_key = None
+        self._settings_key = settings_key
         self._buttons: dict[str, QToolButton] = {}
         self._icon_colors: dict[str, str] = {}
         self._current: str | None = None
@@ -40,8 +45,8 @@ class ActivityBar(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 4, 0, 4); lay.setSpacing(0)
         for key, icon_name, enabled in items:
-            if key == "settings":
-                lay.addStretch(1)   # 设置沉底
+            if key == self._settings_key:
+                lay.addStretch(1)   # 底部设置键沉底（stretch 分隔）
             btn = self._make_button(key, icon_name, enabled)
             self._buttons[key] = btn
             lay.addWidget(btn, 0, Qt.AlignHCenter)
@@ -67,15 +72,17 @@ class ActivityBar(QWidget):
         return btn
 
     def _on_clicked(self, key: str) -> None:
-        """统一点击入口：浮窗类 key → action_triggered；页面类 → 现有 current_changed。"""
-        if key in self._popup_keys:
-            self.action_triggered.emit(key)   # 浮窗触发：不切页、不改选中态
+        """统一点击入口：底部设置键/浮窗类 key → action_triggered；页面类 → current_changed。"""
+        if key == self._settings_key or key in self._popup_keys:
+            self.action_triggered.emit(key)   # 设置/浮窗触发：不切页、不改选中态
         else:
             self.set_current(key)
 
     def set_current(self, key: str) -> None:
         if self._locked:
             return
+        if key == self._settings_key:
+            return   # 底部设置键不参与选中态（只发 action_triggered）
         if key not in self._buttons or not self._buttons[key].isEnabled():
             return
         if key == self._current:
@@ -113,6 +120,10 @@ class ActivityBar(QWidget):
 
     def keys(self) -> list[str]:
         return [k for k, _, _ in self._items]
+
+    def nav_keys(self) -> list[str]:
+        """导航键列表（不含底部设置键）——MainWindow 的 nav 语义。"""
+        return [k for k, _, _ in self._items if k != self._settings_key]
 
     def is_enabled(self, key: str) -> bool:
         return self._buttons[key].isEnabled()

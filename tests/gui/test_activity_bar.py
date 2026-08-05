@@ -95,3 +95,39 @@ def test_popup_key_via_custom_keys(qtbot):
     w._buttons["firmware"].click()   # firmware 被标为浮窗类 → 只发 action_triggered
     assert actions == ["firmware"]
     assert w.current_key() is None
+
+
+# ---- 底部设置键（布局重构 v3 Task 1）：settings_key 沉底渲染，点击发 action_triggered，不参与选中态 ----
+_NAV_ITEMS = [
+    ("device", "fa5s.microchip", True),
+    ("editor", "fa5s.code", True),
+    ("settings", "fa5s.cog", True),
+]
+
+
+def test_settings_key_excluded_from_nav_keys(qtbot):
+    """settings_key 指定底部键：nav_keys() 不含它（nav 语义）；keys() 仍含全部项。"""
+    w = ActivityBar(_NAV_ITEMS, settings_key="settings"); qtbot.addWidget(w)
+    assert w.nav_keys() == ["device", "editor"]
+    assert w.keys() == ["device", "editor", "settings"]
+
+
+def test_settings_click_emits_action_without_nav(qtbot):
+    """底部设置键点击：发 action_triggered("settings")，不发 current_changed，不改变选中态。"""
+    w = ActivityBar(_NAV_ITEMS, settings_key="settings"); qtbot.addWidget(w)
+    w.set_current("editor")
+    current, actions = [], []
+    w.current_changed.connect(current.append)
+    w.action_triggered.connect(actions.append)
+    w._buttons["settings"].click()
+    assert actions == ["settings"]
+    assert current == []
+    assert w.current_key() == "editor"
+
+
+def test_settings_key_not_selectable(qtbot):
+    """settings_key 不参与选中态：set_current 拒绝它（settings 不成为页面）。"""
+    w = ActivityBar(_NAV_ITEMS, settings_key="settings"); qtbot.addWidget(w)
+    w.set_current("editor")
+    w.set_current("settings")
+    assert w.current_key() == "editor"
