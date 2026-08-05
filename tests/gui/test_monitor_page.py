@@ -163,15 +163,27 @@ def test_host_state_changed_next_ai_uses_state(qtbot):
     assert states == ["stop"]
 
 
-# --- 连接提示条（决策点 1：本页无端口选择，统一顶栏连接）---
+# --- 连接提示条（决策点 1：本页无端口选择，统一顶栏连接；设计 §4.5 两态）---
 def test_connection_hint_shown(qtbot):
-    """页初始化即显示「使用顶栏连接」提示条。"""
+    """页初始化（未连接）显示 WARNING 提示条「请先在顶栏连接设备」。"""
     p = MonitorPage(); qtbot.addWidget(p)
     assert p.has_connection_hint() is True
+    assert "请先在顶栏连接设备" in p.connection_hint_text()
 
 
 def test_connection_hint_stays_after_set_transport_getter(qtbot):
-    """注入顶栏持久链路后提示条保持可见（set_transport_getter 行为保持）。"""
+    """注入非 None 顶栏链路后提示条保持可见并切为已连接文案。"""
     p = MonitorPage(); qtbot.addWidget(p)
     p.set_transport_getter(lambda: object())
     assert p.has_connection_hint() is True
+    assert "使用顶栏连接" in p.connection_hint_text()
+
+
+def test_connection_hint_switches_with_state(qtbot):
+    """提示条随顶栏链路可用性两态切换（连接→SUCCESS / 断开→WARNING）。"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    assert "请先在顶栏连接设备" in p.connection_hint_text()
+    p.set_transport_getter(lambda: object())   # 连接建立
+    assert "使用顶栏连接" in p.connection_hint_text()
+    p.set_transport_getter(lambda: None)       # 断开
+    assert "请先在顶栏连接设备" in p.connection_hint_text()

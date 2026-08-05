@@ -40,22 +40,21 @@ class MonitorPage(QWidget):
         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
         self._update_btn.clicked.connect(self._open_sensor_update)
         self._update_btn.setEnabled(False)     # 需监控中才能下发
-        # 连接提示条：SUCCESS_BG 底色 + 图标，引导使用顶栏连接
+        # 连接提示条（设计 §4.5）：未连接 WARNING「请先在顶栏连接设备」/ 已连接 SUCCESS「使用顶栏连接」
         self._conn_hint = QFrame()
         self._conn_hint.setObjectName("connHint")
-        self._conn_hint.setStyleSheet(
-            f"QFrame#connHint {{ background: {theme.SUCCESS_BG}; border-radius: {theme.RADIUS_MD}px; }}")
         hint_lay = QHBoxLayout(self._conn_hint)
         hint_lay.setContentsMargins(theme.SPACE_MD, theme.SPACE_SM, theme.SPACE_MD, theme.SPACE_SM)
         hint_lay.setSpacing(theme.SPACE_SM)
         hint_icon = QLabel()
         hint_icon.setPixmap(qta.icon("fa5s.link", color=theme.TEXT_PRIMARY)
                             .pixmap(theme.ICON_SM, theme.ICON_SM))
-        hint_text = QLabel("使用顶栏连接")
-        hint_text.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; background:transparent;")
+        self._conn_hint_text = QLabel("")
+        self._conn_hint_text.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; background:transparent;")
         hint_lay.addWidget(hint_icon)
-        hint_lay.addWidget(hint_text)
+        hint_lay.addWidget(self._conn_hint_text)
         hint_lay.addStretch(1)
+        self._refresh_connection_hint()
         top = QHBoxLayout()
         top.addWidget(self._conn_hint, 1)
         top.addWidget(self._update_btn)
@@ -94,6 +93,15 @@ class MonitorPage(QWidget):
     def set_transport_getter(self, getter) -> None:
         """注入取顶栏持久链路的回调。返回非 None 时监控复用该链路（串口/蓝牙皆可）。"""
         self._transport_getter = getter
+        self._refresh_connection_hint()
+
+    def _refresh_connection_hint(self) -> None:
+        """依据顶栏持久链路是否可用切换提示条：未连接 WARNING / 已连接 SUCCESS（设计 §4.5）。"""
+        connected = self._transport_getter() is not None
+        bg = theme.SUCCESS_BG if connected else theme.WARNING_BG
+        self._conn_hint.setStyleSheet(
+            f"QFrame#connHint {{ background: {bg}; border-radius: {theme.RADIUS_MD}px; }}")
+        self._conn_hint_text.setText("使用顶栏连接" if connected else "请先在顶栏连接设备")
 
     def _rebuild_cards(self) -> None:
         # 清空旧卡片
@@ -157,6 +165,8 @@ class MonitorPage(QWidget):
             self._timer.start()
         else:
             self._timer.stop()
+        # 提示条随连接状态刷新（监控中必然已连接；停止后重新按链路可用性判定）
+        self._refresh_connection_hint()
 
     def _on_error(self, msg: str) -> None:
         QMessageBox.critical(self, "错误", msg)
@@ -226,8 +236,12 @@ class MonitorPage(QWidget):
         return not self._update_btn.isHidden()
 
     def has_connection_hint(self) -> bool:
-        """连接提示条（使用顶栏连接）是否显示。"""
+        """连接提示条是否显示。"""
         return not self._conn_hint.isHidden()
+
+    def connection_hint_text(self) -> str:
+        """当前提示条文案（未连接/已连接两态）。"""
+        return self._conn_hint_text.text()
 
     def latest_frame(self) -> "dict | None":
         return self._latest
