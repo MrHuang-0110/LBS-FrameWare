@@ -1,12 +1,12 @@
-"""数据监控页：顶部串口+启停(+传感器更新)，中部左/右两列 SensorCard，底部 HostStatusBar。
+"""数据监控页：顶部连接提示条+传感器更新，中部左/右两列 SensorCard，底部 HostStatusBar。
+连接统一走顶栏（决策点 1），本页无端口选择。
 设备流式 JSON 经 MonitorWorker.frame_parsed 进来 -> 只缓存最新帧 -> QTimer(100ms) 节流渲染。"""
 from __future__ import annotations
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QLabel, QPushButton, QMessageBox)
 from PySide6.QtCore import QTimer, Signal
 import qtawesome as qta
 from .. import theme
-from ..widgets.port_selector import PortSelector
 from ..widgets.sensor_card import SensorCard
 from ..widgets.host_status_bar import HostStatusBar
 from ..monitor_worker import MonitorWorker
@@ -31,9 +31,8 @@ class MonitorPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.state_changed.connect(self._on_worker_state)
 
-        # 顶栏
-        self._port = PortSelector()
-        # 监控自动启动（连接成功即监控），保留按钮对象供状态回调引用但不显示
+        # 顶栏：统一走顶栏连接（决策点 1），本页不再提供端口选择
+        # 监控自动启动（连接成功即监控），保留隐藏按钮对象供状态回调引用但不显示
         self._start_btn = QPushButton("开始监控"); self._start_btn.setObjectName("primary")
         self._start_btn.setIcon(qta.icon("fa5s.play", color=theme.TEXT_ON_ACCENT))
         self._start_btn.setVisible(False)
@@ -41,11 +40,23 @@ class MonitorPage(QWidget):
         self._update_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
         self._update_btn.clicked.connect(self._open_sensor_update)
         self._update_btn.setEnabled(False)     # 需监控中才能下发
-        self._conn_hint = QLabel("")           # 顶栏已连接时提示走哪条链路
-        self._conn_hint.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
+        # 连接提示条：SUCCESS_BG 底色 + 图标，引导使用顶栏连接
+        self._conn_hint = QFrame()
+        self._conn_hint.setObjectName("connHint")
+        self._conn_hint.setStyleSheet(
+            f"QFrame#connHint {{ background: {theme.SUCCESS_BG}; border-radius: {theme.RADIUS_MD}px; }}")
+        hint_lay = QHBoxLayout(self._conn_hint)
+        hint_lay.setContentsMargins(theme.SPACE_MD, theme.SPACE_SM, theme.SPACE_MD, theme.SPACE_SM)
+        hint_lay.setSpacing(theme.SPACE_SM)
+        hint_icon = QLabel()
+        hint_icon.setPixmap(qta.icon("fa5s.link", color=theme.TEXT_PRIMARY)
+                            .pixmap(theme.ICON_SM, theme.ICON_SM))
+        hint_text = QLabel("使用顶栏连接")
+        hint_text.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; background:transparent;")
+        hint_lay.addWidget(hint_icon)
+        hint_lay.addWidget(hint_text)
+        hint_lay.addStretch(1)
         top = QHBoxLayout()
-        self._port_lbl = QLabel("串口:")
-        top.addWidget(self._port_lbl); top.addWidget(self._port, 1)
         top.addWidget(self._conn_hint, 1)
         top.addWidget(self._update_btn)
 
@@ -83,18 +94,6 @@ class MonitorPage(QWidget):
     def set_transport_getter(self, getter) -> None:
         """注入取顶栏持久链路的回调。返回非 None 时监控复用该链路（串口/蓝牙皆可）。"""
         self._transport_getter = getter
-        self._sync_conn_ui()
-
-    def _sync_conn_ui(self) -> None:
-        """按顶栏是否已连接，切换「本地串口选择」与「复用顶栏连接」两种入口的可见性。"""
-        connected = self._transport_getter() is not None
-        # 已连接：隐藏本页串口下拉，改提示复用顶栏链路
-        self._port_lbl.setVisible(not connected)
-        self._port.setVisible(not connected)
-        self._conn_hint.setVisible(connected)
-        if connected:
-            self._conn_hint.setText("● 使用顶栏连接")
-            self._conn_hint.setStyleSheet(f"color:{theme.SUCCESS}; background:transparent;")
 
     def _rebuild_cards(self) -> None:
         # 清空旧卡片
@@ -125,23 +124,12 @@ class MonitorPage(QWidget):
         self._update_btn.setVisible(prof["sensor_update"])
 
     # --- 启停 ---
-    def _toggle_monitor(self) -> None:
-        if self._monitoring:
-            self.stop_monitor()
-        else:
-            self.start_monitor()
-
     def start_monitor(self) -> None:
-        # 优先复用顶栏已连接的持久链路（串口或蓝牙）；否则回退到本页串口选择
+        # 仅复用顶栏已连接的持久链路（串口或蓝牙）；本页无独立端口选择
         transport = self._transport_getter()
-        if transport is not None:
-            self._worker.start_on(transport)
-            return
-        port = self._port.selected_port()
-        if not port:
-            QMessageBox.warning(self, "提示", "未选择串口，或先在顶栏连接设备"); return
-        baud = getattr(self._profile, "baud", 115200)
-        self._worker.start(port, baud)
+        if transport is None:
+            QMessageBox.warning(self, "提示", "未连接设备，请先在顶栏连接"); return
+        self._worker.start_on(transport)
 
     def stop_monitor(self) -> None:
         self._timer.stop()
@@ -236,6 +224,10 @@ class MonitorPage(QWidget):
 
     def has_sensor_update_button(self) -> bool:
         return not self._update_btn.isHidden()
+
+    def has_connection_hint(self) -> bool:
+        """连接提示条（使用顶栏连接）是否显示。"""
+        return not self._conn_hint.isHidden()
 
     def latest_frame(self) -> "dict | None":
         return self._latest

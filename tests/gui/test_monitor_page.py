@@ -161,3 +161,17 @@ def test_host_state_changed_next_ai_uses_state(qtbot):
     p._on_frame({"State": "stop"})
     p._render()
     assert states == ["stop"]
+
+
+# --- 连接提示条（决策点 1：本页无端口选择，统一顶栏连接）---
+def test_connection_hint_shown(qtbot):
+    """页初始化即显示「使用顶栏连接」提示条。"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    assert p.has_connection_hint() is True
+
+
+def test_connection_hint_stays_after_set_transport_getter(qtbot):
+    """注入顶栏持久链路后提示条保持可见（set_transport_getter 行为保持）。"""
+    p = MonitorPage(); qtbot.addWidget(p)
+    p.set_transport_getter(lambda: object())
+    assert p.has_connection_hint() is True
