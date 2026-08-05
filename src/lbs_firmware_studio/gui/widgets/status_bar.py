@@ -2,6 +2,7 @@
 阶段文案唯一来源 = theme.STAGE_TEXT（§3.6 C4）；前景统一走 STATUSBAR_ON 组（A7）；
 状态点用矢量图标 fa5s.*（A3），颜色走令牌。"""
 from __future__ import annotations
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
 import qtawesome as qta
 from .. import theme
@@ -24,6 +25,9 @@ class StatusBar(QWidget):
         self._deploy.setStyleSheet(
             f"color: {theme.STATUSBAR_ON_MUTED}; font-size: {theme.FONT_CAPTION}px;"
             f" font-family: {theme.MONO_FONT}; background: transparent;")
+        # 超长日志（如固件文件名/超时消息）限宽 320px，避免挤压右侧阶段 chip/推出窗口
+        # （QLabel 无 setTextElideMode，超长部分被裁剪，完整文本可经 tooltip 查看）
+        self._deploy.setMaximumWidth(320)
         self._icon.setStyleSheet("background: transparent;")
         self._stage_dot.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(self)
