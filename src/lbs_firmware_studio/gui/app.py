@@ -19,8 +19,9 @@ class AppController:
         self._main = None
 
     def launch(self, default_product: str = "NEW-AI") -> None:
-        """直入主窗：以默认产品构造 MainWindow 并 show。"""
-        self._main = MainWindow(self._profiles[default_product], self._raw, self._path)
+        """直入主窗：以默认产品构造 MainWindow（传入全部产品供顶栏切换）并 show。"""
+        self._main = MainWindow(self._profiles[default_product], self._raw, self._path,
+                                profiles=self._profiles)
         self._main.show()
 
     def current_window_kind(self) -> str | None:

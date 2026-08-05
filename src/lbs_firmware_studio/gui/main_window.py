@@ -1,15 +1,16 @@
 """主窗口：左 Activity Bar + 顶栏 + 右内容区 + 底部 StatusBar（VS Code 风格）。
-固件更新走 DeployWorker(QThread)，信号回主线程。业务接线沿用已修复版本。"""
+固件更新走 DeployWorker(QThread)，信号回主线程。业务接线沿用已修复版本。
+产品切换：顶栏 ProductSelector 触发，MainWindow 窗内重建页面栈（设计 §4.2）。"""
 from __future__ import annotations
 from pathlib import Path
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QStackedWidget, QMessageBox, QSplitter)
-from PySide6.QtCore import Signal, QThread, Qt
-import qtawesome as qta
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFrame,
+                               QStackedWidget, QMessageBox, QSplitter)
+from PySide6.QtCore import QThread, Qt
 from . import theme
 from .widgets.activity_bar import ActivityBar
 from .widgets.status_bar import StatusBar
 from .widgets.connection_selector import ConnectionSelector
+from .widgets.product_selector import ProductSelector
 from .pages.firmware_page import FirmwarePage
 from .pages.script_editor_page import ScriptEditorPage
 from .pages.settings_page import SettingsPage
@@ -30,10 +31,16 @@ _BUSY_STATES = {"compiling", "connecting", "entering_upgrade", "reconnecting", "
 
 
 class MainWindow(QWidget):
-    switch_product_requested = Signal()
+    # switch_product_requested 已删除：产品切换由 ProductSelector.product_changed
+    # 驱动，MainWindow 在窗内重建页面栈处理（设计 §6.2）。
 
-    def __init__(self, profile, raw_config: dict, config_path: Path, parent=None):
+    def __init__(self, profile, raw_config: dict, config_path: Path,
+                 profiles: dict | None = None, parent=None):
+        """构造签名保持 MainWindow(profile, raw, path)（Task 3 兼容）；
+        新增可选 profiles：全部产品字典（供顶栏 ProductSelector 切换）。
+        未传时退化为单产品字典。"""
         super().__init__(parent)
+        self._profiles = profiles if profiles else {profile.name: profile}
         self._profile = profile
         self._raw = raw_config
         self._path = Path(config_path)
@@ -44,21 +51,21 @@ class MainWindow(QWidget):
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 
-        # 顶栏
-        self._product_lbl = QLabel(profile.name)
-        self._product_lbl.setStyleSheet(f"font-size:{theme.FONT_SUBTITLE}px; font-weight:600; color:{theme.TEXT_PRIMARY}; background:transparent;")
-        self._product_icon = QLabel()
-        self._product_icon.setPixmap(qta.icon("fa5s.microchip", color=theme.ACCENT).pixmap(16, 16))
-        self._product_icon.setStyleSheet("background: transparent;")
+        # 顶栏（48px，BG_BAR）：左 ProductSelector + 1px BORDER 竖分隔线 + stretch + 右 ConnectionSelector
+        self._product_selector = ProductSelector(self._profiles, profile.name)
+        self._product_selector.product_changed.connect(self._on_product_change)
         self._conn = ConnectionSelector()
-        self._switch_btn = QPushButton("切换产品")
-        self._switch_btn.setIcon(qta.icon("fa5s.exchange-alt", color=theme.TEXT_PRIMARY))
-        self._switch_btn.clicked.connect(self.switch_product_requested.emit)
-        top = QWidget(); top.setFixedHeight(40); top.setStyleSheet(f"background: {theme.BG_BAR};")
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setFixedHeight(24)
+        sep.setStyleSheet(f"color: {theme.BORDER};")
+        top = QWidget(); top.setFixedHeight(48); top.setStyleSheet(f"background: {theme.BG_BAR};")
         toplay = QHBoxLayout(top); toplay.setContentsMargins(theme.SPACE_MD, 0, theme.SPACE_MD, 0)
         toplay.setSpacing(theme.SPACE_SM)
-        toplay.addWidget(self._product_icon); toplay.addWidget(self._product_lbl); toplay.addStretch(1)
-        toplay.addWidget(self._conn); toplay.addWidget(self._switch_btn)
+        toplay.addWidget(self._product_selector)
+        toplay.addWidget(sep)
+        toplay.addStretch(1)
+        toplay.addWidget(self._conn)
 
         # Activity Bar + 页面栈
         self._activity = ActivityBar([(k, icon, en) for k, _, icon, en in _NAV])
@@ -84,19 +91,8 @@ class MainWindow(QWidget):
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
         outer.addWidget(top); outer.addWidget(mid, 1); outer.addWidget(self._status)
 
-        # 固件页接线
-        self._firmware.set_profile(profile)
-        self._firmware.start_requested.connect(self._start_firmware)
-        # 脚本编辑/下发页接线
-        self._editor_page.set_profile(profile)
-        self._editor_page.set_port_getter(self._conn.selected_target)
-        self._conn.set_baud_getter(lambda: getattr(self._profile, "baud", 0))
-        self._editor_page.deploy_requested.connect(self._start_script)
-        # 监控运行状态 → 编辑页按钮状态
-        self._monitor.host_state_changed.connect(self._editor_page.on_host_state_changed)
-        # 编辑页运行/暂停按钮 → 发 0xB6 命令
-        self._editor_page.run_toggle_requested.connect(self._on_run_toggle)
-        # 顶栏连接状态变化时刷新监控页入口（连上=复用该链路，断开=退回本页串口选择）
+        # 页面接线（重建时整体重连）；_conn 的常驻信号仅连接一次
+        self._wire_pages()
         self._conn.connection_changed.connect(self._on_connection_changed)
         # 串口/蓝牙设备选择变化时更新下发按钮使能态（未选目标时禁用）
         self._conn.target_changed.connect(self._update_deploy_buttons)
@@ -124,6 +120,67 @@ class MainWindow(QWidget):
             return SettingsPage(self._raw, self._path)
         # _NAV 全部 key 已在上方覆盖；不再有占位页死分支
         raise KeyError(f"unknown page key: {key}")
+
+    def _rebuild_pages(self) -> None:
+        """整体重建页面栈（Firmware/Monitor/Editor/Settings 新实例）。
+        _firmware/_monitor/_editor_page 属性名保留，测试兼容（设计 §6.2）。
+        QStackedWidget 没有 clear()（那是 QLayout 的），需逐 widget 移除并
+        deleteLater 释放旧页实例。"""
+        while self._stack.count():
+            w = self._stack.widget(0)
+            self._stack.removeWidget(w)
+            w.deleteLater()
+        self._pages = {}
+        for key, _label, _icon, _en in _NAV:
+            page = self._make_page(key)
+            self._pages[key] = page
+            self._stack.addWidget(page)
+        self._wire_pages()
+
+    def _wire_pages(self) -> None:
+        """页面级信号接线（Firmware/Editor/Monitor 相互联动；重建后重连）。"""
+        self._firmware.set_profile(self._profile)
+        self._firmware.start_requested.connect(self._start_firmware)
+        self._editor_page.set_profile(self._profile)
+        self._editor_page.set_port_getter(self._conn.selected_target)
+        self._conn.set_baud_getter(lambda: getattr(self._profile, "baud", 0))
+        self._editor_page.deploy_requested.connect(self._start_script)
+        # 监控运行状态 → 编辑页按钮状态
+        self._monitor.host_state_changed.connect(self._editor_page.on_host_state_changed)
+        # 编辑页运行/暂停按钮 → 发 0xB6 命令
+        self._editor_page.run_toggle_requested.connect(self._on_run_toggle)
+
+    def _on_product_change(self, name: str) -> None:
+        """产品切换（窗内重建页面栈，设计 §4.2）。
+        守卫 → 停监控 → 重建 → 重接线 → 状态栏重置 → 连接处理（决策点 §6.4）。"""
+        # Task 2 Minor ②：弹层开着时程序化 select 不刷新高亮——先确保弹层关闭再切
+        if self._product_selector.is_popup_open():
+            self._product_selector._close_popup()
+        if self._busy:
+            # busy 守卫：回滚选择到原产品（同名 select 不 emit，无递归）
+            self._product_selector.select_product(self._profile.name)
+            return
+        if name == self._profile.name:
+            return
+        old_baud = getattr(self._profile, "baud", 0)
+        new_profile = self._profiles[name]
+        baud_same = getattr(new_profile, "baud", 0) == old_baud
+        was_connected = self._conn.is_connected()
+
+        self._monitor.stop_monitor()          # 停旧监控
+        self._profile = new_profile
+        self._rebuild_pages()                 # 重建页面栈（新实例，属性名保留）
+        self._status.set_product(name)        # 状态栏产品名 + 阶段重置为「就绪」
+        self._status.set_state("idle")
+        self._activity.set_current("device")  # 回到默认 device 页
+        self._update_deploy_buttons()
+        # 连接状态处理（决策点 2：baud 一致保持链路并自动重启监控；否则断开提示）
+        if was_connected:
+            if baud_same:
+                self._monitor.start_monitor()
+            else:
+                self._conn.disconnect()
+                QMessageBox.warning(self, "提示", "产品波特率变化，请重新连接")
 
     def _on_nav(self, key: str):
         # 离开设备页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
@@ -230,7 +287,7 @@ class MainWindow(QWidget):
         if not self._busy:
             self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮
         self._conn.setEnabled(not self._busy)
-        self._switch_btn.setEnabled(not self._busy)
+        self._product_selector.set_locked(self._busy)
         self._activity.set_locked(self._busy)
 
     def _on_error(self, msg: str):
@@ -242,7 +299,7 @@ class MainWindow(QWidget):
         self._editor_page.set_busy(False)
         self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）
         self._conn.setEnabled(True)
-        self._switch_btn.setEnabled(True)
+        self._product_selector.set_locked(False)
         self._activity.set_locked(False)
         self._status.set_connection(None, None)
         # 下发前停了监控释放串口；下发结束后若链路仍在则自动恢复监控
@@ -251,7 +308,7 @@ class MainWindow(QWidget):
             monitor.start_monitor()
 
     # ---- 测试访问器（签名不变）----
-    def header_text(self): return self._product_lbl.text()
+    def header_text(self): return self._product_selector.current_product()
     def nav_labels(self): return [lbl for _, lbl, _, _ in _NAV]
     def is_nav_enabled(self, label): return self._activity.is_enabled(_LABEL2KEY[label])
     def navigate(self, label): self._activity.set_current(_LABEL2KEY[label])
@@ -260,6 +317,6 @@ class MainWindow(QWidget):
             if page is self._stack.currentWidget():
                 return _KEY2LABEL[key]
         return ""
-    def click_switch_product(self): self._switch_btn.click()
+    def click_switch_product(self): self._product_selector.trigger_button().click()
     def is_busy(self): return self._busy
     def status_bar_text(self): return self._status.state_text()

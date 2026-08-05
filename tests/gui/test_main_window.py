@@ -3,9 +3,19 @@ from lbs_firmware_studio.backend.profile import DeviceProfile
 from pathlib import Path
 
 
-def _profile():
+def _profile(**kw):
     return DeviceProfile(name="NEW-AI", protocol="custom_frame", display_ports=8,
-                         folders=["app", "version"], firmware_dir=Path("./x"))
+                         folders=["app", "version"], firmware_dir=Path("./x"), **kw)
+
+
+def _two_profiles(baud_new=115200, baud_spark=115200):
+    """两个产品（NEW-AI 当前 + SPARK-AI 可切换），可分别指定 baud（决策点 2 测试）。"""
+    return {
+        "NEW-AI": _profile(baud=baud_new),
+        "SPARK-AI": DeviceProfile(name="SPARK-AI", protocol="custom_frame",
+                                  display_ports=4, folders=["app"],
+                                  firmware_dir=Path("./x"), baud=baud_spark),
+    }
 
 
 def _raw():
@@ -34,10 +44,65 @@ def test_nav_switches_page(qtbot, tmp_path):
     assert w.current_page_name() == "设置"
 
 
-def test_switch_product_button_emits(qtbot, tmp_path):
-    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    with qtbot.waitSignal(w.switch_product_requested, timeout=500):
-        w.click_switch_product()
+def test_product_switch_rebuilds_pages(qtbot, tmp_path):
+    """切换产品 → header 更新 + 页面栈整体重建（Firmware/Monitor/Editor 新实例，属性名保留）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
+    qtbot.addWidget(w)
+    assert w.header_text() == "NEW-AI"
+    old = (w._firmware, w._monitor, w._editor_page)
+    w._product_selector.select_product("SPARK-AI")
+    assert w.header_text() == "SPARK-AI"              # selector 当前产品
+    assert w.current_page_name() == "固件与监控"        # 重建后回到默认 device 页
+    assert w._firmware is not old[0]                  # 页面重建（新实例）
+    assert w._monitor is not old[1]
+    assert w._editor_page is not old[2]
+
+
+def test_switch_blocked_when_busy(qtbot, tmp_path):
+    """busy 时切换产品被拒：selector 锁定 + 守卫回滚，header 不变。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
+    qtbot.addWidget(w)
+    w._on_state("transfering")
+    assert w.is_busy() is True
+    assert w._product_selector.select_product("SPARK-AI") is False   # 锁定拒绝
+    assert w.header_text() == "NEW-AI"
+    w._on_state("done")
+    assert w.is_busy() is False
+
+
+def test_switch_baud_same_keeps_link(qtbot, tmp_path, monkeypatch):
+    """决策点 2：切到 baud 一致产品 → 链路保持 + 自动重启监控。"""
+    from lbs_firmware_studio.gui.pages.monitor_page import MonitorPage
+    started, stopped = [], []
+    monkeypatch.setattr(MonitorPage, "start_monitor", lambda self: started.append(True))
+    monkeypatch.setattr(MonitorPage, "stop_monitor", lambda self: stopped.append(True))
+    w = MainWindow(_profile(baud=115200), _raw(), tmp_path / "products.yaml",
+                   profiles=_two_profiles(115200, 115200))
+    qtbot.addWidget(w)
+    w._conn._transport = object()          # 模拟已连接（活链路）
+    transport = w._conn.persistent_transport()
+    assert transport is not None
+    w._product_selector.select_product("SPARK-AI")
+    assert w.header_text() == "SPARK-AI"
+    assert w._conn.persistent_transport() is transport   # 链路保持（同一对象，未被断开）
+    assert w._conn.is_connected() is True
+    assert stopped == [True]               # 旧监控已停止
+    assert started == [True]               # 新监控已自动启动
+
+
+def test_switch_baud_diff_disconnects_and_warns(qtbot, tmp_path, monkeypatch):
+    """决策点 2：切到 baud 不一致产品 → 断开链路 + 提示重新连接。"""
+    from PySide6.QtWidgets import QMessageBox
+    w = MainWindow(_profile(baud=115200), _raw(), tmp_path / "products.yaml",
+                   profiles=_two_profiles(115200, 9600))
+    qtbot.addWidget(w)
+    w._conn._transport = object()          # 模拟已连接
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a))
+    w._product_selector.select_product("SPARK-AI")
+    assert w.header_text() == "SPARK-AI"
+    assert w._conn.is_connected() is False   # 已断开
+    assert warned                            # 弹了「产品波特率变化」提示框
 
 
 def test_state_updates_statusbar_and_locks(qtbot, tmp_path):
