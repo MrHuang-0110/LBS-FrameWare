@@ -372,11 +372,11 @@ class MainWindow(QWidget):
         self._busy = state in _BUSY_STATES
         self._firmware.set_busy(self._busy)
         self._editor_page.set_busy(self._busy)
-        if not self._busy:
-            self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮
         # busy：禁用浮窗内产品切换与连接按钮（浮窗本身可弹，Task 1 决策）
         self._popup.set_locked(self._busy)
         self._activity.set_locked(self._busy)
+        if not self._busy:
+            self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮；须在 set_locked(False) 之后，避免其覆盖禁用结果
 
     def _on_error(self, msg: str):
         QMessageBox.critical(self, "错误", msg)
@@ -385,8 +385,8 @@ class MainWindow(QWidget):
         self._busy = False
         self._firmware.set_busy(False)
         self._editor_page.set_busy(False)
-        self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）
         self._popup.set_locked(False)
+        self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）；须在 set_locked(False) 之后，避免其覆盖禁用结果
         self._activity.set_locked(False)
         self._status.set_connection(None, None)
         # 下发前停了监控释放串口；下发结束后若链路仍在则自动恢复监控
