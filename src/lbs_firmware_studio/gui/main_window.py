@@ -13,7 +13,6 @@ from .widgets.connection_selector import ConnectionSelector
 from .pages.firmware_page import FirmwarePage
 from .pages.script_editor_page import ScriptEditorPage
 from .pages.settings_page import SettingsPage
-from .pages.placeholder_page import PlaceholderPage
 from .pages.monitor_page import MonitorPage
 from .worker import DeployWorker
 from ..backend.deployer import DeviceDeployer
@@ -123,7 +122,8 @@ class MainWindow(QWidget):
             self._editor_page = ScriptEditorPage(); return self._editor_page
         if key == "settings":
             return SettingsPage(self._raw, self._path)
-        return PlaceholderPage(_KEY2LABEL[key])
+        # _NAV 全部 key 已在上方覆盖；不再有占位页死分支
+        raise KeyError(f"unknown page key: {key}")
 
     def _on_nav(self, key: str):
         # 离开设备页且目标不是编辑页时停监控（编辑页依赖监控数据驱动运行/暂停按钮）
