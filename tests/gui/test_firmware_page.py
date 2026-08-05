@@ -1,6 +1,8 @@
 from lbs_firmware_studio.gui.pages.firmware_page import FirmwarePage
 from lbs_firmware_studio.backend.profile import DeviceProfile
+from lbs_firmware_studio.gui import theme
 from pathlib import Path
+from PySide6.QtWidgets import QMessageBox
 
 
 def _profile():
@@ -17,11 +19,41 @@ def test_set_profile_shows_folders_and_dir(qtbot):
     assert "NEW-AI/fwlib" in w.firmware_dir_text().replace("\\", "/")
 
 
-def test_start_button_emits_signal(qtbot):
+def test_start_button_emits_signal(qtbot, monkeypatch):
+    """点击开始按钮，确认框返回 Yes 后触发 start_requested。"""
     w = FirmwarePage(); qtbot.addWidget(w)
     w.set_profile(_profile())
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     with qtbot.waitSignal(w.start_requested, timeout=500):
         w.start_button().click()
+
+
+def test_confirm_start_required(qtbot, monkeypatch):
+    """开始按钮先弹二次确认（B2）：No 不发 start_requested，Yes 才发。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.set_profile(_profile())
+    emitted = []
+    w.start_requested.connect(lambda: emitted.append(1))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    w.start_button().click()
+    assert emitted == []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    w.start_button().click()
+    assert emitted == [1]
+
+
+def test_confirm_start_direct(qtbot, monkeypatch):
+    """confirm_start() 直通方法：No 不发、Yes 发 start_requested。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.set_profile(_profile())
+    emitted = []
+    w.start_requested.connect(lambda: emitted.append(1))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    w.confirm_start()
+    assert emitted == []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    w.confirm_start()
+    assert emitted == [1]
 
 
 def test_set_busy_disables_start(qtbot):
@@ -39,13 +71,36 @@ def test_on_progress_updates_bar(qtbot):
     assert w.progress_value() == 50
 
 
+def test_progress_format_shows_percent(qtbot):
+    """进度更新后进度条 setFormat 为 f"{pct}%"（B10）。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_progress(50, 100)
+    assert w.progress_value() == 50
+    assert w._bar.format() == "50%"
+
+
 def test_on_state_updates_stage_text(qtbot):
     w = FirmwarePage(); qtbot.addWidget(w)
     w.on_state("transfering")
     assert "传输" in w.stage_text()
 
 
+def test_stage_chip_dot_and_color_follow_state(qtbot):
+    """阶段 chip：色点矢量图标 + 阶段文案随状态，_stage 文字用 state_color 变色。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_state("transfering")
+    assert "传输" in w.stage_text()
+    assert not w.stage_dot().pixmap().isNull()
+    assert theme.state_color("transfering") in w._stage.styleSheet()
+
+
 def test_on_log_appends(qtbot):
     w = FirmwarePage(); qtbot.addWidget(w)
     w.on_log("发送 A.wav")
     assert "A.wav" in w.log_text()
+
+
+def test_log_view_has_row_cap(qtbot):
+    """固件页日志 LogView 配置 500 行上限（E6）。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    assert w._log.maximumBlockCount() == 500

@@ -11,9 +11,11 @@ _LEVEL_COLOR = {
 
 
 class LogView(QPlainTextEdit):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, max_blocks: int = 0):
         super().__init__(parent)
         self.setReadOnly(True)
+        # E6：行数上限（QPlainTextEdit 原生 setMaximumBlockCount 自动裁剪；0 = 不限制）
+        self.setMaximumBlockCount(max_blocks)
 
     def append(self, message: str, level: str = "info") -> None:
         ts = time.strftime("%H:%M:%S")
