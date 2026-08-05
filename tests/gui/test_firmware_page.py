@@ -94,13 +94,48 @@ def test_stage_chip_dot_and_color_follow_state(qtbot):
     assert theme.state_color("transfering") in w._stage.styleSheet()
 
 
-def test_on_log_appends(qtbot):
+def test_initial_progress_text_ready(qtbot):
+    """无活动时单行进度文本显示「就绪」。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    assert w.current_progress_text() == theme.STAGE_TEXT["idle"]
+
+
+def test_on_log_updates_progress_text(qtbot):
+    """log 信号到达后，单行进度文本更新为该条日志。"""
     w = FirmwarePage(); qtbot.addWidget(w)
     w.on_log("发送 A.wav")
-    assert "A.wav" in w.log_text()
+    assert "A.wav" in w.current_progress_text()
 
 
-def test_log_view_has_row_cap(qtbot):
-    """固件页日志 LogView 配置 500 行上限（E6）。"""
+def test_progress_text_uses_last_log(qtbot):
+    """多条日志到达时取最后一条。"""
     w = FirmwarePage(); qtbot.addWidget(w)
-    assert w._log.maximumBlockCount() == 500
+    w.on_log("发送 A.wav")
+    w.on_log("发送 B.wav")
+    txt = w.current_progress_text()
+    assert "B.wav" in txt and "A.wav" not in txt
+
+
+def test_progress_text_shows_percent(qtbot):
+    """进度信号到达后文本含百分比。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_progress(45, 100)
+    assert "45%" in w.current_progress_text()
+
+
+def test_progress_text_combines_last_log_and_percent(qtbot):
+    """log + 进度信号后，文本由最后一条日志与百分比合成（如「正在发送 app/ 45%」）。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_log("发送 app/")
+    w.on_progress(45, 100)
+    txt = w.current_progress_text()
+    assert "app/" in txt and "45%" in txt
+
+
+def test_on_state_idle_resets_progress_text(qtbot):
+    """回到 idle 状态（无活动）时重置为「就绪」。"""
+    w = FirmwarePage(); qtbot.addWidget(w)
+    w.on_log("发送 A.wav")
+    w.on_progress(50, 100)
+    w.on_state("idle")
+    assert w.current_progress_text() == theme.STAGE_TEXT["idle"]

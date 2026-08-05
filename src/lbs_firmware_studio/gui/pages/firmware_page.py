@@ -1,4 +1,4 @@
-"""固件更新页：固件源 + 待发送文件夹 + 开始按钮 + 阶段进度 + 日志。分组框布局。"""
+"""固件更新页：固件源 + 待发送文件夹 + 开始按钮 + 阶段进度 + 单行当前进度。分组框布局。"""
 from __future__ import annotations
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QLineEdit, QGroupBox,
@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import Signal
 import qtawesome as qta
 from .. import theme
-from ..widgets.log_view import LogView
 
 
 class FirmwarePage(QWidget):
@@ -28,7 +27,13 @@ class FirmwarePage(QWidget):
         self._stage = QLabel()
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
         self._bar.setFormat("0%")
-        self._log = LogView(max_blocks=500)
+        # 单行当前进度：日志末条 + 进度百分比合成（TEXT_SECONDARY + mono 字体），
+        # 无活动时显示「就绪」。替代原日志窗口（LogView）。
+        self._progress_text = QLabel(theme.STAGE_TEXT["idle"])
+        self._progress_text.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-family: {theme.MONO_FONT};")
+        self._last_log: str | None = None
+        self._last_pct: int | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
@@ -44,7 +49,7 @@ class FirmwarePage(QWidget):
         src_lay.addWidget(self._summary)
         lay.addWidget(src_group)
 
-        # 组2：操作与进度（§4.4：按钮 + 阶段 chip 同行，进度条下一行）
+        # 组2：操作与进度（§4.4：按钮 + 阶段 chip 同行，进度条下一行，当前进度文本在最下）
         op_group = QGroupBox("操作")
         op_lay = QVBoxLayout(op_group)
         op_lay.setSpacing(theme.SPACE_SM)
@@ -55,16 +60,11 @@ class FirmwarePage(QWidget):
         op_row.addWidget(self._stage)
         op_lay.addLayout(op_row)
         op_lay.addWidget(self._bar)
+        op_lay.addWidget(self._progress_text)
         lay.addWidget(op_group)
+        lay.addStretch(1)
 
-        # 组3：日志
-        log_group = QGroupBox("日志")
-        log_lay = QVBoxLayout(log_group)
-        log_lay.setSpacing(theme.SPACE_SM)
-        log_lay.addWidget(self._log)
-        lay.addWidget(log_group, 1)
-
-        self.on_state("idle")  # 初始化阶段 chip（色点 + 文案 + 颜色）
+        self.on_state("idle")  # 初始化阶段 chip（色点 + 文案 + 颜色）与进度文本
 
     def set_profile(self, profile) -> None:
         self._profile = profile
@@ -92,6 +92,8 @@ class FirmwarePage(QWidget):
         pct = int(done * 100 / total) if total else 0
         self._bar.setValue(pct)
         self._bar.setFormat(f"{pct}%")  # B10：进度条显示百分比
+        self._last_pct = pct
+        self._refresh_progress_text()
 
     def on_state(self, state: str) -> None:
         color = theme.state_color(state)
@@ -99,10 +101,24 @@ class FirmwarePage(QWidget):
                                   .pixmap(theme.ICON_SM, theme.ICON_SM))
         self._stage.setText(theme.STAGE_TEXT.get(state, state))
         self._stage.setStyleSheet(f"color: {color}; background: transparent;")
+        if state == "idle":  # 无活动：重置单行进度文本为「就绪」
+            self._last_log = None
+            self._last_pct = None
+            self._refresh_progress_text()
 
     def on_log(self, msg: str) -> None:
-        level = "error" if ("失败" in msg or "错误" in msg) else "info"
-        self._log.append(msg, level=level)
+        self._last_log = msg
+        self._refresh_progress_text()
+
+    def _refresh_progress_text(self) -> None:
+        """单行当前进度 = 最后一条日志 + 进度百分比；两者皆无时显示「就绪」。"""
+        if self._last_pct is not None:
+            if self._last_log:
+                self._progress_text.setText(f"{self._last_log} {self._last_pct}%")
+            else:
+                self._progress_text.setText(f"{self._last_pct}%")
+        else:
+            self._progress_text.setText(self._last_log or theme.STAGE_TEXT["idle"])
 
     # --- 测试辅助访问器 ---
     def start_button(self): return self._start
@@ -111,4 +127,4 @@ class FirmwarePage(QWidget):
     def firmware_dir_text(self): return self._dir_edit.text()
     def progress_value(self): return self._bar.value()
     def stage_text(self): return self._stage.text()
-    def log_text(self): return self._log.plain_text()
+    def current_progress_text(self): return self._progress_text.text()
