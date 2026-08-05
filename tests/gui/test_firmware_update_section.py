@@ -41,24 +41,20 @@ def test_summary_hidden_without_profile(qtbot):
     assert w._summary.isHidden() is False
 
 
-def test_start_button_emits_signal(qtbot, monkeypatch):
-    """点开始按钮，确认框返回 Yes 后触发 start_requested。"""
+def test_start_button_emits_signal(qtbot):
+    """点开始按钮直接触发 start_requested（无二次确认，用户要求）。"""
     w = FirmwareUpdateSection(); qtbot.addWidget(w)
     w.set_profile(_profile())
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     with qtbot.waitSignal(w.start_requested, timeout=500):
         w.start_button().click()
 
 
-def test_confirm_start_no_does_not_emit(qtbot, monkeypatch):
-    """二次确认（B2）：No 不发 start_requested。"""
+def test_start_button_is_full_width_same_as_connect(qtbot):
+    """开始按钮全宽 30px 高（与连接按钮同尺寸，v3 调整：不再限 180px）。"""
     w = FirmwareUpdateSection(); qtbot.addWidget(w)
-    w.set_profile(_profile())
-    emitted = []
-    w.start_requested.connect(lambda: emitted.append(1))
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
-    w.start_button().click()
-    assert emitted == []
+    w.show(); qtbot.wait(10)
+    assert w.start_button().width() == w.width()   # QVBoxLayout 内水平拉伸到全宽
+    assert w.start_button().height() == 30
 
 
 def test_set_busy_disables_start(qtbot):

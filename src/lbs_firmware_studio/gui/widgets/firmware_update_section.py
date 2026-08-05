@@ -13,8 +13,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QProgressBar, QLineEdit,
-                               QMessageBox)
+                               QPushButton, QProgressBar, QLineEdit)
 from PySide6.QtCore import Signal
 import qtawesome as qta
 
@@ -35,12 +34,14 @@ class FirmwareUpdateSection(QWidget):
         self._summary = QLabel("待发送: -")
         self._summary.hide()
         # 「开始固件更新」：主色按钮（QSS #primary = ACCENT 底 + TEXT_ON_ACCENT 前景，
-        # 图标 fa5s.download、ICON_MD），宽度限 180px，点击弹二次确认（B2）。
+        # 图标 fa5s.download、ICON_MD）。v3 调整：全宽 + 30px 高（与连接按钮同尺寸），
+        # 点击**不再弹二次确认**（用户要求），直接发 start_requested。
         self._start = QPushButton("开始固件更新"); self._start.setObjectName("primary")
         self._start.setIcon(qta.icon("fa5s.download", color=theme.TEXT_ON_ACCENT))
-        self._start.setMaximumWidth(180)
+        self._start.setFixedHeight(30)
         self._start.clicked.connect(self.confirm_start)
-        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT），文字随状态变色
+        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT），文字随状态变色；
+        # 放进度条行右侧（用户要求进度条在底部，chip 随行）
         self._stage_dot = QLabel()
         self._stage = QLabel()
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
@@ -53,7 +54,7 @@ class FirmwareUpdateSection(QWidget):
         self._last_log: str | None = None
         self._last_pct: int | None = None
 
-        # 布局：目录行 / 摘要 / 操作行（按钮 + 阶段 chip）/ 进度条 / 单行进度文本
+        # 布局：目录行 / 开始按钮（全宽）/ 进度条行（进度条+阶段 chip）/ 单行进度文本（底部）
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(theme.SPACE_SM)
@@ -62,13 +63,12 @@ class FirmwareUpdateSection(QWidget):
         row.addWidget(self._dir_edit, 1)
         lay.addLayout(row)
         lay.addWidget(self._summary)
-        op_row = QHBoxLayout(); op_row.setSpacing(theme.SPACE_SM)
-        op_row.addWidget(self._start)
-        op_row.addStretch(1)
-        op_row.addWidget(self._stage_dot)
-        op_row.addWidget(self._stage)
-        lay.addLayout(op_row)
-        lay.addWidget(self._bar)
+        lay.addWidget(self._start)          # 全宽（同连接按钮）
+        bar_row = QHBoxLayout(); bar_row.setSpacing(theme.SPACE_SM)
+        bar_row.addWidget(self._bar, 1)
+        bar_row.addWidget(self._stage_dot)
+        bar_row.addWidget(self._stage)
+        lay.addLayout(bar_row)
         lay.addWidget(self._progress_text)
 
         self.on_state("idle")  # 初始化阶段 chip（色点 + 文案 + 颜色）与进度文本
@@ -96,20 +96,9 @@ class FirmwareUpdateSection(QWidget):
         self._start.setEnabled(not busy)
 
     def confirm_start(self) -> None:
-        """开始固件更新二次确认（B2）：No 不发信号，Yes 才发 start_requested。"""
-        if self._profile is not None:
-            detail = (f"目标: {self._profile.firmware_dir}\n待发送: "
-                      + ", ".join(self._profile.folders))
-        elif self._dir_getter is not None:
-            detail = f"目标: {self._dir_getter()}"
-        else:
-            detail = "未选择产品"
-        answer = QMessageBox.question(
-            self, "确认开始固件更新",
-            f"确认开始固件更新？\n\n{detail}",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if answer == QMessageBox.Yes:
-            self.start_requested.emit()
+        """开始固件更新：不再弹二次确认（用户要求），点击直接发 start_requested。
+        方法名保留（按钮 clicked 接线不变），实现从「QMessageBox 确认」简化为直发。"""
+        self.start_requested.emit()
 
     # ---- 进度回填（deployer 信号接线：progress/log/state_changed）----
     def on_progress(self, done: int, total: int) -> None:

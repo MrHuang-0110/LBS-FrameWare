@@ -82,28 +82,17 @@ class ConnectionPopup(QWidget):
             vertical=True, parent=self)
 
         # ---- v3 Task 2：固件更新区 + 传感器更新按钮 ----
-        self._fw_title = QLabel("固件更新", self)
-        self._fw_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self._fw_title.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; background: transparent;"
-            f" font-size: {theme.FONT_CAPTION}px;"
-            f" font-weight: {theme.WEIGHT_MEDIUM};")
-
-        self._fw_line = QFrame(self)
-        self._fw_line.setFrameShape(QFrame.HLine)
-        self._fw_line.setFixedHeight(1)
-        self._fw_line.setStyleSheet(
-            f"background-color: {theme.BORDER}; border: none;")
-
+        # 用户要求：去掉「固件更新」标题 Label；开始固件更新按钮/传感器更新按钮
+        # 全宽 30px（与连接按钮同尺寸），放在连接区下面；进度条在固件区内底部。
         self._fw_section = FirmwareUpdateSection(self)
         self._fw_section.start_requested.connect(self.start_firmware_requested)
 
         self._sensor_btn = QPushButton("传感器更新", self)
         self._sensor_btn.setIcon(qta.icon("fa5s.sync", color=theme.TEXT_PRIMARY))
-        self._sensor_btn.setMaximumWidth(180)
+        self._sensor_btn.setFixedHeight(30)
         self._sensor_btn.clicked.connect(self._on_sensor_clicked)
 
-        # 根布局：竖向堆叠
+        # 根布局：竖向堆叠（无「固件更新」标题/分隔线）
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_MD,
                                theme.SPACE_LG, theme.SPACE_MD)
@@ -114,8 +103,6 @@ class ConnectionPopup(QWidget):
         lay.addWidget(self._line)
         lay.addWidget(self._connection)
         lay.addSpacing(theme.SPACE_XS)
-        lay.addWidget(self._fw_title)
-        lay.addWidget(self._fw_line)
         lay.addWidget(self._fw_section)
         lay.addWidget(self._sensor_btn)
 

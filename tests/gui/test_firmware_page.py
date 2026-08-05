@@ -29,29 +29,19 @@ def test_start_button_emits_signal(qtbot, monkeypatch):
 
 
 def test_confirm_start_required(qtbot, monkeypatch):
-    """开始按钮先弹二次确认（B2）：No 不发 start_requested，Yes 才发。"""
+    """开始按钮点击直接发 start_requested（无二次确认，用户要求）。"""
     w = FirmwarePage(); qtbot.addWidget(w)
     w.set_profile(_profile())
-    emitted = []
-    w.start_requested.connect(lambda: emitted.append(1))
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
-    w.start_button().click()
-    assert emitted == []
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
-    w.start_button().click()
-    assert emitted == [1]
+    with qtbot.waitSignal(w.start_requested, timeout=500):
+        w.start_button().click()
 
 
 def test_confirm_start_direct(qtbot, monkeypatch):
-    """confirm_start() 直通方法：No 不发、Yes 发 start_requested。"""
+    """confirm_start() 直通方法：调用即发 start_requested（无确认框）。"""
     w = FirmwarePage(); qtbot.addWidget(w)
     w.set_profile(_profile())
     emitted = []
     w.start_requested.connect(lambda: emitted.append(1))
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
-    w.confirm_start()
-    assert emitted == []
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     w.confirm_start()
     assert emitted == [1]
 
