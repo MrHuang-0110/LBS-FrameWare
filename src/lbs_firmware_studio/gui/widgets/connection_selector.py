@@ -68,6 +68,7 @@ class _ConnectWorker(QObject):
 class ConnectionSelector(QWidget):
     connection_changed = Signal(bool)   # True=已连接 False=已断开
     target_changed = Signal()           # 选中的串口/蓝牙设备变化（用于更新下发按钮使能态）
+    _transport_lost = Signal()          # 链路丢失（拔线/BLE 断开，RX 线程报）→ 排队到主线程槽
 
     def __init__(self, port_lister: "Callable | None" = None,
                  ble_scan: "Callable | None" = None,
@@ -133,6 +134,8 @@ class ConnectionSelector(QWidget):
         # 串口/蓝牙下拉选择变化时通知外部（用于更新下发按钮使能态）
         self._port._combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
         self._ble_combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
+        # 链路丢失（拔线/BLE 断开，从 RX 线程 emit）→ 排队到主线程槽清理连接状态
+        self._transport_lost.connect(self._handle_transport_lost)
 
         # 顶栏 48px 适配（设计 §4.1/§4.3）：交互控件统一 30px 高，在 48px 顶栏内垂直居中
         for w in (self._rb_serial, self._rb_ble, self._port, self._ble_combo,
@@ -243,6 +246,10 @@ class ConnectionSelector(QWidget):
         if not target:
             return
         transport = self.make_transport()
+        # 挂「链路丢失」回调：拔线/BLE 断开时 transport 内部线程报给本组件（Qt 信号
+        # emit 跨线程自动排队到主线程槽），UI 实时切回未连接（用户反馈：拔线后不刷新）。
+        if hasattr(transport, "set_disconnected_callback"):
+            transport.set_disconnected_callback(self._transport_lost.emit)
         self._connect_btn.setEnabled(False)
         self._connect_btn.setText("连接中...")
         self._set_inputs_enabled(False)
@@ -275,6 +282,22 @@ class ConnectionSelector(QWidget):
         self._connect_btn.setEnabled(True)
         self._set_inputs_enabled(True)
         self._update_dot(False, error=True, msg=msg)
+
+    @Slot()
+    def _handle_transport_lost(self) -> None:
+        """链路丢失（拔线/BLE 断开，由 transport 内部线程经 _transport_lost 信号排队调用）：
+        清理连接状态并通知外部，UI 实时切回未连接。disconnect() 主动断开时 _transport
+        已置 None，此处幂等早退。"""
+        if self._transport is None:
+            return
+        self._transport = None
+        self._connect_btn.setText("连接")
+        self._connect_btn.setEnabled(True)
+        self._set_inputs_enabled(True)
+        self._update_dot(False)
+        self.connection_changed.emit(False)
+        self._conn_thread = None
+        self._conn_worker = None
 
     def disconnect(self) -> None:
         if self._transport is not None:

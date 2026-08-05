@@ -385,11 +385,9 @@ class MainWindow(QWidget):
         QMessageBox.critical(self, "错误", msg)
 
     def _on_deploy_log(self, msg: str) -> None:
-        """deployer 日志 → 状态栏单行文本：过滤 [DEBUG] 进展噪声（每包 ACK 等待等），
-        但**保留超时/告警类卡点消息**（'timeout waiting for 0x43'）——那是固件卡住时
-        状态栏唯一能定位卡点的信息。浮窗关闭后仍可见。"""
-        if msg.startswith("[DEBUG]") and "timeout" not in msg:
-            return
+        """deployer 日志 → 状态栏单行文本（**全部显示，含 [DEBUG] 调试信息**——
+        用户要求可见 DEBUG 数据：'waiting for ACK' 类消息即传输进展，'timeout waiting
+        for 0x43' 即卡点；浮窗关闭后仍可见。超长文本悬停可看完整内容）。"""
         self._status.set_deploy_text(msg)
 
     def _on_finished(self):

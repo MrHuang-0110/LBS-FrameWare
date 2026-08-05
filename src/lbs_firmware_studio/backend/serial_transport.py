@@ -27,8 +27,14 @@ class SerialTransport:
         self._port_lister = port_lister  # 返回当前存在的端口名集合；None=用 pyserial 探测
         self._rx_queue: queue.Queue[int] = queue.Queue()
         self._data_handler: Callable[[bytes], None] | None = None
+        self._disconnected_cb: Callable[[], None] | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def set_disconnected_callback(self, cb: "Callable[[], None] | None") -> None:
+        """注册「链路断开」回调：串口被拔出/驱动错误导致 RX 线程连续读取失败退出时调用
+        （在 RX 线程内执行，回调需自行保证线程安全，如 Qt 信号转发到主线程）。"""
+        self._disconnected_cb = cb
 
     def set_reopen_factory(self, factory: "Callable[[str, int], object] | None") -> None:
         self._reopen_factory = factory
@@ -120,6 +126,12 @@ class SerialTransport:
                                 consecutive_errors, _RX_ERROR_RETRY_LIMIT, exc)
                 if consecutive_errors >= _RX_ERROR_RETRY_LIMIT:
                     _logger.error("串口 RX 连续读取异常 %d 次，RX 线程退出", consecutive_errors)
+                    cb = self._disconnected_cb
+                    if cb is not None:
+                        try:
+                            cb()   # 拔线实时通知上层（UI 切回未连接），回调内自行保证线程安全
+                        except Exception:
+                            _logger.exception("串口断开回调异常(已忽略)")
                     break
                 time.sleep(0.05)
                 continue

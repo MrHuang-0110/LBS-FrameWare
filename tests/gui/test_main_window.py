@@ -77,17 +77,17 @@ def test_switch_blocked_when_busy(qtbot, tmp_path):
 
 
 def test_deploy_log_shown_in_status_bar(qtbot, tmp_path, monkeypatch):
-    """deployer 日志 → 状态栏单行文本：过滤 [DEBUG] 进展噪声但保留 timeout 卡点，
-    浮窗关闭后仍可见；error/finished 清空。"""
+    """deployer 日志 → 状态栏单行文本（全部显示含 [DEBUG]，用户要求可见调试数据）；
+    error/finished 清空。"""
     monkeypatch.setattr("lbs_firmware_studio.gui.main_window.QMessageBox.critical",
                         lambda *a, **k: None)  # 模态错误框在测试中阻塞，monkeypatch 掉
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
     qtbot.addWidget(w)
     assert w._status.deploy_text() == ""
     w._on_deploy_log("[DEBUG] _send_packet_wait: 1024B sent, waiting for ACK")
-    assert w._status.deploy_text() == ""            # 进展噪声不显示
+    assert w._status.deploy_text() == "[DEBUG] _send_packet_wait: 1024B sent, waiting for ACK"
     w._on_deploy_log("[DEBUG] _wait_control: timeout waiting for 0x43")
-    assert w._status.deploy_text().endswith("timeout waiting for 0x43")  # 卡点消息保留
+    assert w._status.deploy_text().endswith("timeout waiting for 0x43")
     w._on_deploy_log("发送 NEXT-AI.bin")
     assert w._status.deploy_text() == "发送 NEXT-AI.bin"
     w._on_finished()

@@ -117,6 +117,34 @@ def test_rx_loop_exits_on_persistent_read_error():
     assert t._thread is not None and not t._thread.is_alive(), "RX 线程在持续读错误下仍存活(忙循环)"
 
 
+def test_rx_loop_notifies_disconnected_on_persistent_error():
+    """拔线实时通知：RX 线程因持续读错误退出时调用 set_disconnected_callback 注册的回调
+    （用户反馈：拔掉串口后软件不能实时判断已断开）。"""
+    import time
+
+    class UnpluggedSerial:
+        is_open = False
+        timeout = 0.01
+        dtr = False
+        rts = False
+
+        @property
+        def in_waiting(self):
+            raise OSError(22, "The device does not recognize the command")
+
+        def read(self, n=1):
+            raise OSError(22, "The device does not recognize the command")
+
+    t = SerialTransport(UnpluggedSerial())
+    called = []
+    t.set_disconnected_callback(lambda: called.append(True))
+    t.start_rx()
+    deadline = time.monotonic() + 2.0
+    while (t._thread is None or t._thread.is_alive()) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert called, "拔线后 RX 线程退出但未调用断开回调"
+
+
 def test_rx_loop_recovers_after_transient_read_error():
     """偶发一次读取异常不应退出线程（连续计数重置），恢复后正常收字节。"""
     import time
