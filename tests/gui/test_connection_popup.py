@@ -35,8 +35,8 @@ def test_init_shows_current_product(qtbot):
 def test_is_popup_window_with_fixed_width(qtbot):
     popup = _popup(qtbot)
     assert popup.windowFlags() & Qt.Popup
-    assert popup.minimumWidth() == 300
-    assert popup.maximumWidth() == 300
+    assert popup.minimumWidth() == 320
+    assert popup.maximumWidth() == 320
 
 
 def test_title_present(qtbot):

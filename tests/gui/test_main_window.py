@@ -9,12 +9,13 @@ def _profile(**kw):
 
 
 def _two_profiles(baud_new=115200, baud_spark=115200):
-    """两个产品（NEW-AI 当前 + SPARK-AI 可切换），可分别指定 baud（决策点 2 测试）。"""
+    """两个产品（NEW-AI 当前 + SPARK-AI 可切换），可分别指定 baud（决策点 2 测试）。
+    SPARK-AI 用独立 firmware_dir，供产品切换后浮窗固件目录 getter 刷新断言。"""
     return {
         "NEW-AI": _profile(baud=baud_new),
         "SPARK-AI": DeviceProfile(name="SPARK-AI", protocol="custom_frame",
                                   display_ports=4, folders=["app"],
-                                  firmware_dir=Path("./x"), baud=baud_spark),
+                                  firmware_dir=Path("./x-spark"), baud=baud_spark),
     }
 
 
@@ -28,36 +29,37 @@ def test_shows_product_name(qtbot, tmp_path):
 
 
 def test_nav_items_present_and_locked(qtbot, tmp_path):
+    """布局重构 v3：ActivityBar 精简为 设备连接(浮窗)/代码编辑(页面) + 左下角设置键。
+    nav_labels() == [设备连接, 代码编辑]（设置是底部键，不进 nav 语义）。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    labels = w.nav_labels()
-    assert "固件与监控" in labels and "代码编辑" in labels and "设置" in labels
-    # 布局重构 v2：device/sensor 为浮窗触发入口（设备连接/传感器更新），也在侧边栏
-    assert "设备连接" in labels and "传感器更新" in labels
-    assert "脚本下发" not in labels          # scripts 项已隐藏（合并进代码编辑页）
-    assert "固件更新" not in labels          # 固件更新已合并进"固件与监控"
-    assert "数据监控" not in labels          # 数据监控已合并进"固件与监控"
-    assert w.is_nav_enabled("固件与监控") is True
-    assert w.is_nav_enabled("代码编辑") is True   # editor 现已启用
+    assert w.nav_labels() == ["设备连接", "代码编辑"]
+    assert "设置" not in w.nav_labels()
+    assert "固件与监控" not in w.nav_labels()   # 固件与监控页已移除
+    assert "传感器更新" not in w.nav_labels()   # 传感器更新入口移到设备浮窗
+    assert w.is_nav_enabled("设备连接") is True
+    assert w.is_nav_enabled("代码编辑") is True
 
 
 def test_nav_switches_page(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w.navigate("设置")
-    assert w.current_page_name() == "设置"
+    w.navigate("代码编辑")
+    assert w.current_page_name() == "代码编辑"
 
 
 def test_product_switch_rebuilds_pages(qtbot, tmp_path):
-    """切换产品 → header 更新 + 页面栈整体重建（Firmware/Monitor/Editor 新实例，属性名保留）。"""
+    """切换产品 → header 更新 + 页面栈重建（Editor 新实例）与右侧监控栏重建。
+    _firmware 为浮窗内固件更新区（单例，随产品切换刷新目录 getter，不重建）。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
     qtbot.addWidget(w)
     assert w.header_text() == "NEW-AI"
-    old = (w._firmware, w._monitor, w._editor_page)
+    old = (w._monitor, w._editor_page)
     w._product_selector.select_product("SPARK-AI")
     assert w.header_text() == "SPARK-AI"              # selector 当前产品
-    assert w.current_page_name() == "固件与监控"        # 重建后回到默认 device 页
-    assert w._firmware is not old[0]                  # 页面重建（新实例）
-    assert w._monitor is not old[1]
-    assert w._editor_page is not old[2]
+    assert w.current_page_name() == "代码编辑"         # 默认停留在唯一页面
+    assert w._monitor is not old[0]                   # 右侧监控栏重建（新实例）
+    assert w._editor_page is not old[1]               # 编辑页重建（新实例）
+    # 浮窗固件目录 getter 已随新产品刷新
+    assert "x-spark" in w._firmware.firmware_dir_text().replace("\\", "/")
 
 
 def test_switch_blocked_when_busy(qtbot, tmp_path):
@@ -74,10 +76,10 @@ def test_switch_blocked_when_busy(qtbot, tmp_path):
 
 def test_switch_baud_same_keeps_link(qtbot, tmp_path, monkeypatch):
     """决策点 2：切到 baud 一致产品 → 链路保持 + 自动重启监控。"""
-    from lbs_firmware_studio.gui.pages.monitor_page import MonitorPage
+    from lbs_firmware_studio.gui.widgets.monitor_panel import MonitorPanel
     started, stopped = [], []
-    monkeypatch.setattr(MonitorPage, "start_monitor", lambda self: started.append(True))
-    monkeypatch.setattr(MonitorPage, "stop_monitor", lambda self: stopped.append(True))
+    monkeypatch.setattr(MonitorPanel, "start_monitor", lambda self: started.append(True))
+    monkeypatch.setattr(MonitorPanel, "stop_monitor", lambda self: stopped.append(True))
     w = MainWindow(_profile(baud=115200), _raw(), tmp_path / "products.yaml",
                    profiles=_two_profiles(115200, 115200))
     qtbot.addWidget(w)
@@ -168,25 +170,8 @@ def test_main_window_initial_size(qtbot, tmp_path):
 
 def test_device_nav_enabled(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    assert "固件与监控" in w.nav_labels()
-    assert w.is_nav_enabled("固件与监控") is True
-
-
-def test_navigate_to_device_page(qtbot, tmp_path):
-    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w.navigate("代码编辑")
-    w.navigate("固件与监控")
-    assert w.current_page_name() == "固件与监控"
-
-
-def test_leaving_device_stops_monitor(qtbot, tmp_path):
-    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w.navigate("固件与监控")
-    w._monitor._monitoring = True  # 模拟监控正在运行
-    stopped = []
-    w._monitor.stop_monitor = lambda: stopped.append(True)  # 打桩
-    w.navigate("设置")     # 离开设备页到非编辑页
-    assert stopped == [True]
+    assert "设备连接" in w.nav_labels()
+    assert w.is_nav_enabled("设备连接") is True
 
 
 def test_connection_auto_starts_monitor(qtbot, tmp_path):
@@ -217,7 +202,7 @@ def test_product_selector_min_width_after_show(qtbot, tmp_path):
     assert w._product_selector.width() >= 168
 
 
-# ---- 布局重构 v2：顶栏主机信息 + 设备/传感器浮窗入口 ----
+# ---- 布局重构 v2：顶栏主机信息 + 设备浮窗入口 ----
 def test_topbar_shows_host_status_bar(qtbot, tmp_path):
     """顶栏只放主机信息：host_bar() 访问器返回 HostStatusBar，字段随产品初始化。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
@@ -228,7 +213,7 @@ def test_topbar_shows_host_status_bar(qtbot, tmp_path):
 
 
 def test_host_status_bar_updates_from_monitor_frame(qtbot, tmp_path):
-    """监控页帧渲染转发到顶栏 HostStatusBar（主机信息数据流）。"""
+    """监控数据经 monitor_panel 更新：帧渲染转发到顶栏 HostStatusBar（主机信息数据流）。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     frame = {"deviceList": [], "version": 317,
              "mem": {"yaw": "60.31", "pitch": "179.39", "roll": "-0.34"}}
@@ -245,20 +230,69 @@ def test_device_icon_opens_popup(qtbot, tmp_path):
     assert w.popup_visible() is True
 
 
-def test_sensor_icon_opens_dialog(qtbot, tmp_path, monkeypatch):
-    """点 ActivityBar 的 sensor 图标弹出传感器更新对话框（守卫：监控中 + 产品支持）。"""
+# ---- 布局重构 v3：主内容区右侧监控栏 / 浮窗固件 / 左下角设置 ----
+def test_main_content_has_right_monitor_panel(qtbot, tmp_path):
+    """主内容区含右侧监控栏：monitor_panel() 访问器返回 MonitorPanel，固定宽 280px。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    panel = w.monitor_panel()
+    assert panel is not None
+    assert panel.minimumWidth() == 280
+    assert panel.maximumWidth() == 280
+    assert panel.card_count() == 8      # NEW-AI 卡片已按 profile 挂载
+
+
+def test_popup_has_firmware_section(qtbot, tmp_path):
+    """设备浮窗含固件更新区（FirmwareUpdateSection），_firmware 即该区。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    fw = w._popup.firmware_section()
+    assert fw is w._firmware
+    assert fw.start_button().text() == "开始固件更新"
+
+
+def test_settings_button_bottom_key(qtbot, tmp_path, monkeypatch):
+    """左下角设置按钮：settings_button() 访问器返回底部设置键，点击经 action_triggered 弹设置。"""
+    from lbs_firmware_studio.gui.main_window import MainWindow
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    btn = w.settings_button()
+    assert btn is not None
+    assert w._activity._settings_key == "settings"
+    assert w._activity.nav_keys() == ["device", "editor"]   # settings 不进 nav 语义
+    # 真实 _on_settings_action 会 exec() 模态对话框，测试中打桩验证「设置按钮 → 弹设置」接线
+    opened = []
+    monkeypatch.setattr(MainWindow, "_on_settings_action", lambda self: opened.append(True))
+    actions = []
+    w._activity.action_triggered.connect(actions.append)
+    btn.click()
+    assert opened == [True]          # 点击设置按钮触发了 _on_settings_action
+    assert actions == ["settings"]   # 且发的是 action_triggered（不切页）
+
+
+def test_firmware_start_from_popup_wired(qtbot, tmp_path, monkeypatch):
+    """固件更新从浮窗发起：start_firmware_requested → MainWindow 收起浮窗并走 _start_firmware。"""
+    from PySide6.QtWidgets import QMessageBox
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    called = []
+    w._start_firmware = lambda: called.append(True)
+    w._popup.start_firmware_requested.emit()
+    assert called == [True]
+    assert w.popup_visible() is False     # 开始后主动收起浮窗（Task 2 遗留 ①）
+
+
+def test_sensor_update_from_popup_opens_dialog(qtbot, tmp_path, monkeypatch):
+    """点浮窗传感器更新按钮 → sensor_update_requested → MainWindow 弹 SensorUpdateDialog。"""
     opened = []
     monkeypatch.setattr(
         "lbs_firmware_studio.gui.dialogs.sensor_update_dialog.SensorUpdateDialog.exec",
         lambda self: opened.append(True))
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._monitor._monitoring = True   # 模拟监控中（守卫通过才弹对话框）
-    w._activity._buttons["sensor"].click()
+    w._popup._sensor_btn.click()
     assert opened == [True]
 
 
-def test_sensor_icon_blocked_when_not_monitoring(qtbot, tmp_path, monkeypatch):
-    """守卫：未监控（未连接）时点 sensor 图标不弹对话框，改为提示先连接并开始监控。"""
+def test_sensor_update_blocked_when_not_monitoring(qtbot, tmp_path, monkeypatch):
+    """守卫：未监控（未连接）时点传感器按钮不弹对话框，改为提示先连接并开始监控。"""
     from PySide6.QtWidgets import QMessageBox
     opened, informed = [], []
     monkeypatch.setattr(
@@ -266,13 +300,13 @@ def test_sensor_icon_blocked_when_not_monitoring(qtbot, tmp_path, monkeypatch):
         lambda self: opened.append(True))
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: informed.append(a))
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
-    w._activity._buttons["sensor"].click()   # 未监控
+    w._popup._sensor_btn.click()   # 未监控
     assert opened == []                        # 不弹对话框
     assert informed                            # 提示「请先连接并开始监控」
     assert any("连接" in str(x) for x in informed)
 
 
-def test_sensor_icon_blocked_when_product_unsupported(qtbot, tmp_path, monkeypatch):
+def test_sensor_update_blocked_when_product_unsupported(qtbot, tmp_path, monkeypatch):
     """守卫：产品不支持 sensor_update（SPARK-AI）时提示不支持，不弹对话框。"""
     from PySide6.QtWidgets import QMessageBox
     opened, informed = [], []
@@ -284,7 +318,7 @@ def test_sensor_icon_blocked_when_product_unsupported(qtbot, tmp_path, monkeypat
                           folders=["app"], firmware_dir=Path("./x"))
     w = MainWindow(spark, _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     w._monitor._monitoring = True   # 监控中，但产品不支持
-    w._activity._buttons["sensor"].click()
+    w._popup._sensor_btn.click()
     assert opened == []
     assert any("不支持" in str(x) for x in informed)
 

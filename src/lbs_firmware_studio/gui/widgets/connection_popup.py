@@ -30,7 +30,7 @@ from .firmware_update_section import FirmwareUpdateSection
 from .product_selector import ProductSelector
 
 # 浮窗固定宽度（设计：设备浮窗约 300px）
-_POPUP_WIDTH = 300
+_POPUP_WIDTH = 320
 
 
 class ConnectionPopup(QWidget):
