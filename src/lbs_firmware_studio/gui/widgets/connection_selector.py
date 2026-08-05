@@ -75,7 +75,9 @@ class ConnectionSelector(QWidget):
                  serial_factory=SerialTransport, ble_factory=BleTransport,
                  vertical: bool = False, parent=None):
         super().__init__(parent)
-        self._ble_scan = ble_scan or (lambda timeout=5.0: ble_scan_default(timeout))
+        # raise_on_error=True：扫描失败（适配器关闭/权限）上抛 → 状态点显示原因，
+        # 否则静默返回空列表，用户只看到空下拉不知道为何（用户反馈：蓝牙扫描不了东西）。
+        self._ble_scan = ble_scan or (lambda timeout=5.0: ble_scan_default(timeout, raise_on_error=True))
         self._serial_factory = serial_factory
         self._ble_factory = ble_factory
         self._baud_getter: "Callable[[], int]" = lambda: 0
@@ -188,7 +190,9 @@ class ConnectionSelector(QWidget):
         self._reset_scan_btn()
 
     @Slot(str)
-    def _on_scan_failed(self, _msg: str) -> None:
+    def _on_scan_failed(self, msg: str) -> None:
+        # 扫描失败可见化：状态点红色 + tooltip 显示原因（用户反馈：蓝牙扫描不了东西无提示）
+        self._update_dot(False, error=True, msg=f"扫描失败: {msg}")
         self._reset_scan_btn()
 
     def _reset_scan_btn(self) -> None:

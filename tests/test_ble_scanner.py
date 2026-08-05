@@ -28,6 +28,18 @@ def test_scan_swallows_discover_error_returns_empty():
     assert scan(timeout=0.1, discover=boom) == []
 
 
+def test_scan_raises_on_error_when_requested():
+    """raise_on_error=True（GUI 扫描路径）：discover 抛异常时上抛而非静默返回空，
+    让「蓝牙扫描失败」对用户可见（用户反馈：蓝牙扫描不了东西且无提示）。"""
+    async def boom(timeout):
+        raise RuntimeError("adapter off")
+    try:
+        scan(timeout=0.1, discover=boom, raise_on_error=True)
+        raise AssertionError("raise_on_error=True 时异常应上抛")
+    except RuntimeError as e:
+        assert "adapter off" in str(e)
+
+
 class _FakeAdv:
     def __init__(self, local_name, rssi):
         self.local_name = local_name; self.rssi = rssi

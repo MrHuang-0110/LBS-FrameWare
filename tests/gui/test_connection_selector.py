@@ -37,6 +37,19 @@ def test_switch_to_ble_lists_devices_and_target(app, qtbot):
     assert cs.selected_name() == "ECB02"
 
 
+def test_scan_failure_shows_error_on_dot(app, qtbot):
+    """扫描失败可见化：状态点红色 + tooltip 显示原因（用户反馈：蓝牙扫描不了东西无提示）。"""
+    def boom(timeout=5.0):
+        raise RuntimeError("adapter off")
+    cs = ConnectionSelector(port_lister=lambda: [], ble_scan=boom)
+    cs._port.inject_ports([])
+    cs.set_kind("ble")
+    cs.scan_ble()
+    qtbot.waitUntil(lambda: cs._ble_scan_btn.text() == "扫描", timeout=2000)  # 扫描线程结束
+    assert "扫描失败" in cs._dot.toolTip()
+    assert "adapter off" in cs._dot.toolTip()
+
+
 def test_make_transport_by_kind(app, qtbot):
     from lbs_firmware_studio.backend.serial_transport import SerialTransport
     from lbs_firmware_studio.backend.ble_transport import BleTransport
