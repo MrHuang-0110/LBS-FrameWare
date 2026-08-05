@@ -4,11 +4,13 @@
 - 「连接」按钮建立并保持链路（BLE 连接会阻塞，故在后台线程跑），
   再点变「断开」。绿色状态点表示已连接。
 - 已连接时 make_transport() 返回这条活链路，下发流程复用它（不重开/不关闭）。
+- 布局：默认单行横排（顶栏）；vertical=True 时改为竖向堆叠（ConnectionPopup 浮窗内）：
+  radio 一行 / 端口下拉+刷新 一行 / 连接按钮+状态点 一行。
 """
 from __future__ import annotations
 from typing import Callable
 from PySide6.QtCore import QObject, QThread, Signal, Slot
-from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton, QLabel,
+from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QRadioButton, QLabel,
                                QButtonGroup, QStackedWidget, QComboBox, QPushButton)
 import qtawesome as qta
 from .port_selector import PortSelector
@@ -69,7 +71,8 @@ class ConnectionSelector(QWidget):
 
     def __init__(self, port_lister: "Callable | None" = None,
                  ble_scan: "Callable | None" = None,
-                 serial_factory=SerialTransport, ble_factory=BleTransport, parent=None):
+                 serial_factory=SerialTransport, ble_factory=BleTransport,
+                 vertical: bool = False, parent=None):
         super().__init__(parent)
         self._ble_scan = ble_scan or (lambda timeout=5.0: ble_scan_default(timeout))
         self._serial_factory = serial_factory
@@ -110,10 +113,20 @@ class ConnectionSelector(QWidget):
         self._dot.setToolTip("未连接")
         self._update_dot(False)
 
-        # 根布局单行横排：[○串口 ○蓝牙] [下拉+扫描/刷新] [连接] [●]
-        lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(10)
-        lay.addLayout(radios); lay.addWidget(self._stack, 1)
-        lay.addWidget(self._connect_btn); lay.addWidget(self._dot)
+        # 根布局：默认单行横排 [○串口 ○蓝牙] [下拉+扫描/刷新] [连接] [●]；
+        # vertical=True（ConnectionPopup 浮窗内）竖向堆叠三行：radio / 下拉+刷新 / 连接+状态点
+        if vertical:
+            lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(10)
+            lay.addLayout(radios)
+            lay.addWidget(self._stack)
+            btn_row = QHBoxLayout(); btn_row.setContentsMargins(0, 0, 0, 0); btn_row.setSpacing(10)
+            btn_row.addWidget(self._connect_btn, 1)
+            btn_row.addWidget(self._dot)
+            lay.addLayout(btn_row)
+        else:
+            lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(10)
+            lay.addLayout(radios); lay.addWidget(self._stack, 1)
+            lay.addWidget(self._connect_btn); lay.addWidget(self._dot)
 
         self._group.idToggled.connect(self._on_kind_toggled)
         # 串口/蓝牙下拉选择变化时通知外部（用于更新下发按钮使能态）
