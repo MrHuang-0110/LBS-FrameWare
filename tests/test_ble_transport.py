@@ -502,3 +502,41 @@ def test_handler_exception_does_not_interrupt_notify():
     finally:
         t.stop_rx()
         t.close()
+
+# ---- _RealBleakClient.get_characteristics 双版本兼容（用户环境 bleak 3.0.2）----
+def test_get_characteristics_bleak_3x_services_attr():
+    """bleak 3.x：get_services() 已移除、services 属性连接后填充——get_characteristics 走属性路径。"""
+    from lbs_firmware_studio.backend.ble_transport import _RealBleakClient
+
+    class Svc:
+        def __init__(self, uuid, props):
+            self.uuid = uuid
+            self.properties = props
+
+    class NewStyleClient:
+        # 3.x：无 get_services 方法；services 属性（连接后填充）
+        services = [type("S", (), {"characteristics": [Svc("ffe1", ["notify", "write"])]})()]
+
+    c = _RealBleakClient("addr")
+    c._c = NewStyleClient()
+    pairs = asyncio.run(c.get_characteristics())
+    assert pairs == [("ffe1", ["notify", "write"])]
+
+
+def test_get_characteristics_old_bleak_get_services():
+    """旧版 bleak（<0.19）：无 services 属性、有 get_services()——走异步调用路径。"""
+    from lbs_firmware_studio.backend.ble_transport import _RealBleakClient
+
+    class Svc:
+        def __init__(self, uuid, props):
+            self.uuid = uuid
+            self.properties = props
+
+    class OldStyleClient:
+        async def get_services(self):
+            return [type("S", (), {"characteristics": [Svc("ffe1", ["notify", "write"])]})()]
+
+    c = _RealBleakClient("addr")
+    c._c = OldStyleClient()
+    pairs = asyncio.run(c.get_characteristics())
+    assert pairs == [("ffe1", ["notify", "write"])]

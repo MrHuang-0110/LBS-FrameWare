@@ -101,10 +101,15 @@ class _RealBleakClient:
         await self._c.write_gatt_char(uuid, data, response=response)
 
     async def get_characteristics(self):
-        # 跨 bleak 版本稳定：get_services() 在所有版本均可用（client.services 属性仅新版
-        # 才有）。用户环境 bleak 版本旧 → 原 `self._c.services` 抛 AttributeError
-        # （"BleakClient object has no attribute"），连接失败。
-        services = await self._c.get_services()
+        # 双版本兼容：
+        # - 旧版 bleak（<0.19）：无 services 属性，须 await get_services()；
+        # - 新版 bleak（3.x）：get_services() 已移除，改用 services 属性（连接后填充）。
+        # 用户环境 3.0.2：get_services 不存在 → 走 services 属性，否则 AttributeError。
+        get_services = getattr(self._c, "get_services", None)
+        if get_services is not None:
+            services = await get_services()
+        else:
+            services = self._c.services
         pairs = []
         for svc in services:
             for ch in svc.characteristics:
