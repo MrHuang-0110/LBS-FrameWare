@@ -2,7 +2,6 @@
 阶段文案唯一来源 = theme.STAGE_TEXT（§3.6 C4）；前景统一走 STATUSBAR_ON 组（A7）；
 状态点用矢量图标 fa5s.*（A3），颜色走令牌。"""
 from __future__ import annotations
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
 import qtawesome as qta
 from .. import theme
@@ -64,8 +63,10 @@ class StatusBar(QWidget):
         pass
 
     def set_deploy_text(self, text: str) -> None:
-        """单行部署进度文本（deployer 日志/百分比；固件更新浮窗关闭后仍可见）。"""
+        """单行部署进度文本（deployer 日志/百分比；固件更新浮窗关闭后仍可见）。
+        超长文本被限宽裁剪，完整内容经 tooltip 查看。"""
         self._deploy.setText(text)
+        self._deploy.setToolTip(text)   # 限宽裁剪的完整文本 hover 可看
         self._deploy.setVisible(bool(text))
 
     def set_state(self, state: str) -> None:
