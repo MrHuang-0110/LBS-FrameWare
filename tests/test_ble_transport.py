@@ -370,6 +370,23 @@ def test_disconnect_callback_marks_not_open():
         t.close()
 
 
+def test_disconnect_callback_invoked_on_device_side_disconnect():
+    """I1：BLE 顶层 set_disconnected_callback 注册的回调在设备侧断开（关机/超距）时被调用
+    ——ConnectionSelector 据此实时切回未连接（与 SerialTransport 对齐）。"""
+    from tests.fakes import make_fake_ble_pair
+    client, dev = make_fake_ble_pair()
+    t = BleTransport(client_factory=lambda addr: client)
+    called = []
+    t.set_disconnected_callback(lambda: called.append(True))
+    t.open("addr")
+    try:
+        client.simulate_disconnect()   # 设备侧断开 -> 触发断开回调
+        assert called, "设备侧断开后未调用 set_disconnected_callback 注册的回调"
+    finally:
+        t._run(client.disconnect())
+        t.close()
+
+
 def test_write_failure_marks_not_open():
     """T2-B1：write 抛异常（如设备断连导致 GATT 写失败）时同步置 _connected=False，
     is_open 随之变 False，避免上层继续按健康链路写入。

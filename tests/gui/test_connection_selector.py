@@ -61,7 +61,6 @@ def test_radio_qss_converged_into_global(app):
 def test_transport_lost_updates_ui_to_disconnected(app, qtbot):
     """链路丢失（拔线/BLE 断开，transport 内部线程调回调）：经 _transport_lost 信号
     排队到主线程 → UI 切回未连接 + connection_changed(False)（用户反馈：拔线后不实时刷新）。"""
-    import time
 
     class FakeTrans:
         def set_disconnected_callback(self, cb):

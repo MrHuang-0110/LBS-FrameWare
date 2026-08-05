@@ -292,7 +292,7 @@ class ConnectionSelector(QWidget):
             return
         self._transport = None
         self._connect_btn.setText("连接")
-        self._connect_btn.setEnabled(True)
+        self._connect_btn.setEnabled(not self._locked)   # busy 锁定优先（M1）
         self._set_inputs_enabled(True)
         self._update_dot(False)
         self.connection_changed.emit(False)

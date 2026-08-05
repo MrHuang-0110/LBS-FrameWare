@@ -129,11 +129,18 @@ class BleTransport:
         self._loop_thread: threading.Thread | None = None
         self._rx_queue: queue.Queue[int] = queue.Queue()
         self._data_handler: Callable[[bytes], None] | None = None
+        self._disconnected_cb: Callable[[], None] | None = None
         self._notify_uuid: str | None = None
         self._write_uuid: str | None = None
         self._write_response = False   # 写特征值是否支持带响应写(逐片确认，做背压)
         self._mtu = 20
         self._connected = False
+
+    def set_disconnected_callback(self, cb: "Callable[[], None] | None") -> None:
+        """注册「链路断开」回调：设备侧断开（关机/超距，bleak 回调在事件循环线程执行）
+        时调用（I1 修复：BLE 拔线/关机 UI 实时切回未连接，与 SerialTransport 对齐）。
+        回调需自行保证线程安全（如 Qt 信号转发到主线程）。"""
+        self._disconnected_cb = cb
 
     # ---- 事件循环线程 ----
     def _ensure_loop(self) -> None:
@@ -198,6 +205,12 @@ class BleTransport:
         _ble_log(f"设备断开回调触发 address={self._address}")
         with self._lock:
             self._connected = False
+        cb = self._disconnected_cb
+        if cb is not None:
+            try:
+                cb()   # 通知上层（UI 切回未连接），回调内自行保证线程安全
+            except Exception:
+                _ble_log("BLE 断开回调异常(已忽略)")
 
     def _on_notify(self, sender, data) -> None:
         b = bytes(data)
