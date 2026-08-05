@@ -11,6 +11,9 @@ _LABELS = {
     "editor": "代码编辑", "monitor": "数据监控", "settings": "设置",
 }
 
+# 浮窗触发类 key：点击只发 action_triggered（弹浮窗），不切页、不改变选中态
+_POPUP_KEYS = {"device", "sensor"}
+
 # E3：键盘焦点环（a11y），全部按钮共用；不参与图标着色逻辑
 _FOCUS_QSS = (
     f"QToolButton:focus {{ border: 1px solid {theme.ACCENT_FOCUS};"
@@ -20,12 +23,15 @@ _FOCUS_QSS = (
 
 class ActivityBar(QWidget):
     current_changed = Signal(str)
+    action_triggered = Signal(str)   # 浮窗类图标（popup keys）点击
 
-    def __init__(self, items: list[tuple[str, str, bool]], parent=None):
+    def __init__(self, items: list[tuple[str, str, bool]], parent=None,
+                 popup_keys: set[str] | None = None):
         super().__init__(parent)
         self.setFixedWidth(48)
         self.setStyleSheet(f"background: {theme.BG_BAR};")
         self._items = items
+        self._popup_keys = set(popup_keys) if popup_keys is not None else set(_POPUP_KEYS)
         self._buttons: dict[str, QToolButton] = {}
         self._icon_colors: dict[str, str] = {}
         self._current: str | None = None
@@ -55,10 +61,17 @@ class ActivityBar(QWidget):
             f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
         btn.setEnabled(enabled)
         if enabled:
-            btn.clicked.connect(lambda _=False, k=key: self.set_current(k))
+            btn.clicked.connect(lambda _=False, k=key: self._on_clicked(k))
         self._icon_names = getattr(self, "_icon_names", {})
         self._icon_names[key] = icon_name
         return btn
+
+    def _on_clicked(self, key: str) -> None:
+        """统一点击入口：浮窗类 key → action_triggered；页面类 → 现有 current_changed。"""
+        if key in self._popup_keys:
+            self.action_triggered.emit(key)   # 浮窗触发：不切页、不改选中态
+        else:
+            self.set_current(key)
 
     def set_current(self, key: str) -> None:
         if self._locked:
