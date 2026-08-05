@@ -92,7 +92,10 @@ class _RealBleakClient:
 
     def set_disconnected_callback(self, cb):
         # 透传 bleak 的设备侧断开回调（关机/超距触发），供 BleTransport 检测断线。
-        self._c.set_disconnected_callback(cb)
+        # 旧版 bleak（<0.19）无此 API：getattr 防御，断线检测退化为写失败探测（不崩）。
+        set_cb = getattr(self._c, "set_disconnected_callback", None)
+        if set_cb is not None:
+            set_cb(cb)
 
     async def write_gatt_char(self, uuid, data, response: bool = False):
         await self._c.write_gatt_char(uuid, data, response=response)
