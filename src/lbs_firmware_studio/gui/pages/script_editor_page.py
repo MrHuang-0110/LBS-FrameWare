@@ -31,6 +31,16 @@ class ScriptEditorPage(QWidget):
         self._open_btn = QPushButton("打开…")
         self._open_btn.clicked.connect(self._on_open)
         self._save_btn = QPushButton("保存")
+        self._save_btn.setObjectName("save_btn")
+        self._save_btn.setStyleSheet(
+            f"QPushButton#save_btn {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER}; border-radius: {theme.RADIUS_SM}px; padding: 5px 12px; }}"
+            f"QPushButton#save_btn:hover {{ background: {theme.BG_HOVER}; border-color: {theme.ACCENT_HOVER}; }}"
+            f"QPushButton#save_btn:pressed {{ background: {theme.BG_SELECTED}; }}"
+            f"QPushButton#save_btn:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.BG_INPUT}; }}"
+            f"QPushButton#save_btn:focus {{ border: 1px solid {theme.ACCENT_FOCUS}; }}"
+            f"QPushButton#save_btn[dirty=\"true\"] {{ border: 1px solid {theme.ACCENT}; color: {theme.ACCENT}; }}"
+            f"QPushButton#save_btn[dirty=\"true\"]:disabled {{ color: {theme.TEXT_DISABLED}; border-color: {theme.BG_INPUT}; }}")
         self._save_btn.clicked.connect(self.save)
         top = QHBoxLayout()
         top.setSpacing(theme.SPACE_SM)
@@ -54,7 +64,7 @@ class ScriptEditorPage(QWidget):
         # 运行按钮
         self._run_btn = QPushButton(self._editor)
         self._run_btn.setObjectName("floatbtn")
-        self._run_btn.setIcon(qta.icon("fa5s.play", color=theme.ACCENT))
+        self._run_btn.setIcon(qta.icon("fa5s.play", color=theme.SUCCESS))
         self._run_btn.setToolTip("运行程序")
         self._run_btn.clicked.connect(self._on_run_toggle)
         self._run_btn.setEnabled(False)
@@ -71,7 +81,8 @@ class ScriptEditorPage(QWidget):
             b.setFixedHeight(32)
             b.setStyleSheet(
                 f"QPushButton#floatbtn {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
-                f" border: 1px solid {theme.BORDER}; border-radius: 16px; padding: 4px 12px; }}"
+                f" border: 1px solid {theme.BORDER}; border-radius: {theme.RADIUS_FULL}px;"
+                f" padding: {theme.SPACE_XS}px {theme.SPACE_MD}px; }}"
                 f"QPushButton#floatbtn:hover {{ background: {theme.BG_HOVER}; }}"
                 f"QPushButton#floatbtn:pressed {{ background: {theme.BG_SELECTED}; }}")
         self._running = False
@@ -161,11 +172,18 @@ class ScriptEditorPage(QWidget):
 
     def _mark_dirty(self):
         self._dirty = True
-        self._save_btn.setStyleSheet("QPushButton { border: 1px solid %s; }" % _accent())
+        self._set_dirty_property(True)
 
     def _mark_clean(self):
         self._dirty = False
-        self._save_btn.setStyleSheet("")
+        self._set_dirty_property(False)
+
+    def _set_dirty_property(self, v: bool) -> None:
+        """A2 根治：QSS 属性选择器不随属性变化自动刷新，需 setProperty 后 unpolish/polish。"""
+        self._save_btn.setProperty("dirty", v)
+        style = self._save_btn.style()
+        style.unpolish(self._save_btn)
+        style.polish(self._save_btn)
 
     def is_dirty(self) -> bool:
         return self._dirty
@@ -197,17 +215,16 @@ class ScriptEditorPage(QWidget):
         return super().eventFilter(obj, event)
 
     def _reposition_float_buttons(self):
-        margin = 8
+        margin = theme.SPACE_SM
+        gap = theme.SPACE_SM
         w = self._editor.width()
-        self._deploy_btn.adjustSize()
-        self._slot_btn.adjustSize()
-        self._pause_btn.adjustSize()
-        self._run_btn.adjustSize()
-        dx = w - margin - self._deploy_btn.width()
-        self._deploy_btn.move(dx, margin)
-        self._slot_btn.move(dx - self._slot_btn.width() - 8, margin)
-        self._pause_btn.move(dx - self._slot_btn.width() - self._pause_btn.width() - 16, margin)
-        self._run_btn.move(dx - self._slot_btn.width() - self._pause_btn.width() - self._run_btn.width() - 24, margin)
+        btns = (self._deploy_btn, self._slot_btn, self._pause_btn, self._run_btn)
+        x = w - margin
+        for b in btns:            # 从右到左：[下发][槽位 N][暂停][运行]
+            b.adjustSize()
+            x -= b.width()
+            b.move(x, margin)
+            x -= gap
 
     # --- 下发 ---
     def set_port_getter(self, fn) -> None:
@@ -316,6 +333,3 @@ class ScriptEditorPage(QWidget):
         return self._log.plain_text()
 
 
-def _accent() -> str:
-    from .. import theme
-    return theme.ACCENT

@@ -123,7 +123,7 @@ class PythonHighlighter(QSyntaxHighlighter):
         self._rules.append((re.compile(r"@\w+"), _fmt(theme.WARNING)))          # 装饰器
         self._rules.append((re.compile(r"\b[0-9]+\.?[0-9]*\b"), _fmt(theme.WARNING)))  # 数字
         self._str_fmt = _fmt(theme.SUCCESS)
-        self._comment_fmt = _fmt(theme.TEXT_DISABLED, italic=True)
+        self._comment_fmt = _fmt(theme.TEXT_COMMENT, italic=True)
 
     def highlightBlock(self, text: str) -> None:
         for pattern, fmt in self._rules:

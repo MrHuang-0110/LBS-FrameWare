@@ -66,7 +66,7 @@ def test_highlighter_colors_keywords(qtbot):
     assert hash_idx == 13
     comment = _fg_at(ed, hash_idx, len(text) - hash_idx)
     assert comment is not None, "注释 span 未定位到"
-    assert comment.foreground().color().name().lower() == theme.TEXT_DISABLED.lower()
+    assert comment.foreground().color().name().lower() == theme.TEXT_COMMENT.lower()
     assert comment.fontItalic() is True
 
 

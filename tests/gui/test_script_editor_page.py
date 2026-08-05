@@ -291,3 +291,28 @@ def test_set_busy_false_restores_run_state(qtbot, tmp_path):
     page.set_busy(False)
     assert page._run_btn.isEnabled() is False   # 运行中，运行按钮仍禁用
     assert page._pause_btn.isEnabled() is True  # 运行中，暂停按钮启用
+
+
+def test_dirty_highlight_via_property(qtbot, tmp_path):
+    """dirty 高亮走 property + repolish：编辑后 _save_btn 的 dirty 属性为 True，保存后复位。"""
+    from lbs_firmware_studio.gui import theme
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    assert page._save_btn.property("dirty") in (None, False)   # 初始未标脏
+    page._editor.set_text("changed")
+    assert page.is_dirty() is True
+    assert page._save_btn.property("dirty") is True
+    page.save()
+    assert page.is_dirty() is False
+    assert page._save_btn.property("dirty") is False
+    # dirty QSS 规则应存在于保存按钮生效样式表（组件级），否则属性无视觉
+    assert 'save_btn[dirty="true"]' in page._save_btn.styleSheet()
+
+
+def test_float_buttons_radius_token(qtbot, tmp_path):
+    """浮动按钮圆角走 RADIUS_FULL 令牌（等价断言：渲染圆角值与令牌一致）。"""
+    from lbs_firmware_studio.gui import theme
+    page = ScriptEditorPage(); qtbot.addWidget(page)
+    page.set_profile(_profile(tmp_path))
+    for b in (page._run_btn, page._pause_btn, page._slot_btn, page._deploy_btn):
+        assert f"border-radius: {theme.RADIUS_FULL}px" in b.styleSheet()
