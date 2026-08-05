@@ -48,6 +48,8 @@ def scan(timeout: float = 5.0,
     if isinstance(devices, dict):
         for dev, adv in devices.values():
             name = getattr(adv, "local_name", None) or getattr(dev, "name", None) or ""
+            if not name:
+                continue   # 过滤未知名设备（用户要求：空名字/未知名不显示）
             rssi = getattr(adv, "rssi", None)
             out.append(BleDevice(
                 name=name,
@@ -56,8 +58,11 @@ def scan(timeout: float = 5.0,
             ))
     else:
         for d in devices:
+            name = getattr(d, "name", None) or ""
+            if not name:
+                continue   # 过滤未知名设备（用户要求）
             out.append(BleDevice(
-                name=getattr(d, "name", None) or "",
+                name=name,
                 address=d.address,
                 rssi=int(getattr(d, "rssi", 0) or 0),
             ))

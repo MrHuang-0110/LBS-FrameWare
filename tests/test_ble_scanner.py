@@ -7,13 +7,11 @@ class _FakeDev:
 
 
 def test_scan_maps_devices():
+    """已知名设备保留；未知名（空名字）设备被过滤（用户要求）。"""
     async def fake_discover(timeout):
         return [_FakeDev("ECB02", "AA:BB", -40), _FakeDev(None, "CC:DD", -70)]
     result = scan(timeout=0.1, discover=fake_discover)
-    assert result == [
-        BleDevice(name="ECB02", address="AA:BB", rssi=-40),
-        BleDevice(name="", address="CC:DD", rssi=-70),
-    ]
+    assert result == [BleDevice(name="ECB02", address="AA:BB", rssi=-40)]  # 空名字 CC:DD 被过滤
 
 
 def test_scan_empty():
@@ -53,14 +51,17 @@ class _FakeBleakDev:
 
 def test_scan_maps_return_adv_dict():
     """return_adv=True 形态：dict[address -> (BLEDevice, AdvertisementData)]，
-    name 优先 adv.local_name，rssi 取 adv.rssi。"""
+    name 优先 adv.local_name，rssi 取 adv.rssi；两者皆空（未知名）→ 过滤（用户要求）。"""
     async def fake_discover(timeout):
         return {
             "AA:BB": (_FakeBleakDev(None, "AA:BB"), _FakeAdv("ECB02", -40)),
             "CC:DD": (_FakeBleakDev("DEVNAME", "CC:DD"), _FakeAdv(None, -70)),
+            "EE:FF": (_FakeBleakDev(None, "EE:FF"), _FakeAdv(None, -60)),
         }
     result = scan(timeout=0.1, discover=fake_discover)
     assert BleDevice(name="ECB02", address="AA:BB", rssi=-40) in result
     # adv.local_name 为 None 时回退 dev.name
     assert BleDevice(name="DEVNAME", address="CC:DD", rssi=-70) in result
+    # 未知名设备（local_name 与 name 皆空）被过滤
+    assert all(d.address != "EE:FF" for d in result)
     assert len(result) == 2
