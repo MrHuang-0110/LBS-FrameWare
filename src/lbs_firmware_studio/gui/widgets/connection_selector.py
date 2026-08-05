@@ -1,6 +1,6 @@
 """连接方式统一入口：串口 / 蓝牙二选一 + 连接/断开。
 
-- 模式切换用绿色小圆点标记选中项（替代原丑的粗蓝边单选样式）。
+- 模式切换用绿色小圆点标记选中项（QRadioButton 样式收敛于 theme.app_qss()，走查 E1）。
 - 「连接」按钮建立并保持链路（BLE 连接会阻塞，故在后台线程跑），
   再点变「断开」。绿色状态点表示已连接。
 - 已连接时 make_transport() 返回这条活链路，下发流程复用它（不重开/不关闭）。
@@ -10,22 +10,12 @@ from typing import Callable
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton, QLabel,
                                QButtonGroup, QStackedWidget, QComboBox, QPushButton)
+import qtawesome as qta
 from .port_selector import PortSelector
 from .. import theme
 from ...backend.serial_transport import SerialTransport
 from ...backend.ble_transport import BleTransport
 from ...backend.ble_scanner import scan as ble_scan_default
-
-# 模式切换：选中项用绿色实心小圆点标记，未选中为空心灰圈（比默认粗蓝边清爽）
-_RADIO_QSS = f"""
-QRadioButton {{ background: transparent; color: {theme.TEXT_PRIMARY}; spacing: 6px; }}
-QRadioButton:disabled {{ color: {theme.TEXT_DISABLED}; }}
-QRadioButton::indicator {{ width: 12px; height: 12px; border-radius: 7px;
-    border: 1px solid {theme.BORDER}; background: transparent; }}
-QRadioButton::indicator:hover {{ border-color: {theme.SUCCESS}; }}
-QRadioButton::indicator:checked {{ border: 1px solid {theme.SUCCESS};
-    background: {theme.SUCCESS}; }}
-"""
 
 
 class _ScanWorker(QObject):
@@ -97,11 +87,9 @@ class ConnectionSelector(QWidget):
         self._group = QButtonGroup(self)
         self._group.addButton(self._rb_serial, 0)
         self._group.addButton(self._rb_ble, 1)
-        # 单选按钮组：左侧一小块横排，绿色小圆点标记选中项
+        # 单选按钮组：左侧一小块横排，绿色小圆点标记选中项（样式在 theme.app_qss()）
         radios = QHBoxLayout(); radios.setContentsMargins(0, 0, 0, 0); radios.setSpacing(10)
         radios.addWidget(self._rb_serial); radios.addWidget(self._rb_ble)
-        for rb in (self._rb_serial, self._rb_ble):
-            rb.setStyleSheet(_RADIO_QSS)
 
         self._port = PortSelector(lister=port_lister)
         ble_page = QWidget(); ble_lay = QHBoxLayout(ble_page)
@@ -115,10 +103,10 @@ class ConnectionSelector(QWidget):
         self._stack.addWidget(self._port)      # index 0 = serial
         self._stack.addWidget(ble_page)        # index 1 = ble
 
-        # 连接/断开按钮 + 绿色状态点
+        # 连接/断开按钮 + 绿色状态点（矢量图标，A3）
         self._connect_btn = QPushButton("连接")
         self._connect_btn.clicked.connect(self.toggle_connection)
-        self._dot = QLabel("●")
+        self._dot = QLabel()
         self._dot.setToolTip("未连接")
         self._update_dot(False)
 
@@ -131,6 +119,11 @@ class ConnectionSelector(QWidget):
         # 串口/蓝牙下拉选择变化时通知外部（用于更新下发按钮使能态）
         self._port._combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
         self._ble_combo.currentIndexChanged.connect(lambda _: self.target_changed.emit())
+
+        # 顶栏 48px 适配（设计 §4.1/§4.3）：交互控件统一 30px 高，在 48px 顶栏内垂直居中
+        for w in (self._rb_serial, self._rb_ble, self._port, self._ble_combo,
+                  self._ble_scan_btn, self._connect_btn):
+            w.setFixedHeight(30)
 
     # ---- 外部注入 ----
     def set_baud_getter(self, getter: "Callable[[], int]") -> None:
@@ -283,13 +276,15 @@ class ConnectionSelector(QWidget):
         self._stack.setEnabled(enabled)
 
     def _update_dot(self, connected: bool, error: bool = False, msg: str = "") -> None:
+        """连接状态点：矢量图标（A3），颜色走令牌，尺寸 ICON_MD。"""
         if connected:
-            color, tip = theme.SUCCESS, "已连接"
+            color, name, tip = theme.SUCCESS, "fa5s.circle", "已连接"
         elif error:
-            color, tip = theme.ERROR, f"连接失败: {msg}" if msg else "连接失败"
+            color, name = theme.ERROR, "fa5s.exclamation-triangle"
+            tip = f"连接失败: {msg}" if msg else "连接失败"
         else:
-            color, tip = theme.TEXT_DISABLED, "未连接"
-        self._dot.setStyleSheet(f"color: {color}; background: transparent; font-size: 14px;")
+            color, name, tip = theme.ICON_DISABLED, "fa5s.circle-notch", "未连接"
+        self._dot.setPixmap(qta.icon(name, color=color).pixmap(theme.ICON_MD, theme.ICON_MD))
         self._dot.setToolTip(tip)
 
     def make_transport(self):

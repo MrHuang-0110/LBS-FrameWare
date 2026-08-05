@@ -31,6 +31,18 @@ def test_state_text_and_color(qtbot):
 
 
 def test_set_product(qtbot):
+    """设计 B9/§4.1：状态栏不再显示产品名；set_product 兼容保留但 state_text 只含阶段文案。"""
     w = StatusBar(); qtbot.addWidget(w)
     w.set_product("NEW-AI")
-    assert "NEW-AI" in w.state_text() or "NEW-AI" in w._product_lbl.text()
+    assert "NEW-AI" not in w.state_text()
+    assert w.state_text() == theme.STAGE_TEXT["idle"]
+
+
+def test_statusbar_on_colors(qtbot):
+    """A7/§4.1：蓝底状态栏前景走 STATUSBAR_ON 组——
+    阶段文案用 STATUSBAR_ON；未连接态连接文字用 STATUSBAR_ON_MUTED，连接后切回 STATUSBAR_ON。"""
+    w = StatusBar(); qtbot.addWidget(w)
+    assert theme.STATUSBAR_ON in w._stage_lbl.styleSheet()
+    assert theme.STATUSBAR_ON_MUTED in w._conn.styleSheet()   # 未连接弱化
+    w.set_connection("COM9", 115200)
+    assert theme.STATUSBAR_ON in w._conn.styleSheet()          # 连接后常态

@@ -1,14 +1,10 @@
-"""VS Code 风格底部状态栏：蓝色条，左连接状态，右产品名+运行状态。"""
+"""VS Code 风格底部状态栏：蓝底 24px，左连接状态，右部署阶段（去产品名，设计 §4.1/B9）。
+阶段文案唯一来源 = theme.STAGE_TEXT（§3.6 C4）；前景统一走 STATUSBAR_ON 组（A7）；
+状态点用矢量图标 fa5s.*（A3），颜色走令牌。"""
 from __future__ import annotations
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
 import qtawesome as qta
 from .. import theme
-
-_STATE_TEXT = {
-    "idle": "空闲", "compiling": "编译中", "connecting": "连接中",
-    "entering_upgrade": "进入升级", "reconnecting": "重连中",
-    "transfering": "传输中", "done": "完成", "error": "错误",
-}
 
 
 class StatusBar(QWidget):
@@ -18,52 +14,62 @@ class StatusBar(QWidget):
         self.setStyleSheet(f"background: {theme.STATUSBAR};")
         self._icon = QLabel()
         self._conn = QLabel("未连接")
-        self._product_lbl = QLabel("")
+        self._stage_dot = QLabel()
+        self._stage_lbl = QLabel("")
         self._state = "idle"
-        self._product = ""
-        for lbl in (self._conn, self._product_lbl):
-            lbl.setStyleSheet(f"color: {theme.TEXT_ON_ACCENT}; font-size: {theme.FONT_CAPTION}px; background: transparent;")
+        for lbl in (self._conn, self._stage_lbl):
+            lbl.setStyleSheet(
+                f"color: {theme.STATUSBAR_ON}; font-size: {theme.FONT_CAPTION}px; background: transparent;")
         self._icon.setStyleSheet("background: transparent;")
+        self._stage_dot.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(theme.SPACE_MD, 0, theme.SPACE_MD, 0)
         lay.setSpacing(theme.SPACE_XS + 2)
         lay.addWidget(self._icon)
         lay.addWidget(self._conn)
         lay.addStretch(1)
-        lay.addWidget(self._product_lbl)
+        lay.addWidget(self._stage_dot)
+        lay.addWidget(self._stage_lbl)
         self._update_conn_icon(False)
-        self._refresh_product()
+        self._refresh_state()
 
     def _update_conn_icon(self, connected: bool) -> None:
-        color = theme.TEXT_ON_ACCENT if connected else theme.TEXT_DISABLED
+        """连接点矢量图标（A3）：已连接 SUCCESS 实心圆；未连接弱化圈（A7 STATUSBAR_ON_MUTED）。"""
+        color = theme.SUCCESS if connected else theme.STATUSBAR_ON_MUTED
         name = "fa5s.circle" if connected else "fa5s.circle-notch"
-        self._icon.setPixmap(qta.icon(name, color=color).pixmap(10, 10))
+        self._icon.setPixmap(qta.icon(name, color=color).pixmap(theme.ICON_XS, theme.ICON_XS))
+        self._conn.setStyleSheet(
+            f"color: {theme.STATUSBAR_ON if connected else theme.STATUSBAR_ON_MUTED};"
+            f" font-size: {theme.FONT_CAPTION}px; background: transparent;")
 
     def set_connection(self, port, baud) -> None:
         if port:
             self._conn.setText(f"{port} · {baud}")
-            self._update_conn_icon(True)
         else:
             self._conn.setText("未连接")
-            self._update_conn_icon(False)
+        self._update_conn_icon(bool(port))
 
     def set_product(self, name: str) -> None:
-        self._product = name
-        self._refresh_product()
+        """兼容保留（main_window 调用点）：状态栏不再显示产品名（设计 B9/§4.1），输入被忽略。
+        产品身份由顶栏 ProductSelector 承担。"""
+        pass
 
     def set_state(self, state: str) -> None:
         self._state = state
-        self._refresh_product()
+        self._refresh_state()
 
-    def _refresh_product(self) -> None:
-        st = _STATE_TEXT.get(self._state, self._state)
-        self._product_lbl.setText(f"{self._product} · {st}" if self._product else st)
+    def _refresh_state(self) -> None:
+        """阶段文案 = theme.STAGE_TEXT（§3.6 唯一来源）+ 状态色点矢量图标（颜色走 state_color）。"""
+        st = theme.STAGE_TEXT.get(self._state, self._state)
+        self._stage_lbl.setText(st)
+        color = theme.state_color(self._state)
+        self._stage_dot.setPixmap(qta.icon("fa5s.circle", color=color).pixmap(theme.ICON_XS, theme.ICON_XS))
 
     def connection_text(self) -> str:
         return self._conn.text()
 
     def state_text(self) -> str:
-        return self._product_lbl.text()
+        return self._stage_lbl.text()
 
     def state_color(self) -> str:
         return theme.state_color(self._state)

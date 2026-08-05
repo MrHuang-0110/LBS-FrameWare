@@ -47,3 +47,13 @@ def test_make_transport_by_kind(app, qtbot):
     cs.set_kind("ble"); cs.scan_ble()
     qtbot.waitUntil(lambda: cs._ble_combo.count() > 0, timeout=2000)  # 等后台填充完成
     assert isinstance(cs.make_transport(), BleTransport)
+
+
+def test_radio_qss_converged_into_global(app):
+    """E1：QRadioButton 样式收敛进 theme.app_qss()（indicator 16px 绿色小圆点），
+    connection_selector 不再维护局部 _RADIO_QSS。"""
+    from lbs_firmware_studio.gui import theme
+    cs = ConnectionSelector(port_lister=lambda: [], ble_scan=lambda t: [])
+    assert cs._rb_serial.styleSheet() == ""      # 无局部 QSS
+    assert "QRadioButton::indicator" in theme.app_qss()
+
