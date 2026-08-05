@@ -38,15 +38,18 @@ def test_switch_to_ble_lists_devices_and_target(app, qtbot):
 
 
 def test_scan_failure_shows_error_on_dot(app, qtbot):
-    """扫描失败可见化：状态点红色 + tooltip 显示原因（用户反馈：蓝牙扫描不了东西无提示）。"""
+    """扫描失败可见化：状态点红色 + tooltip + scan_failed 信号（用户反馈：蓝牙扫描不了东西）。"""
     def boom(timeout=5.0):
         raise RuntimeError("adapter off")
     cs = ConnectionSelector(port_lister=lambda: [], ble_scan=boom)
     cs._port.inject_ports([])
     cs.set_kind("ble")
+    reasons = []
+    cs.scan_failed.connect(reasons.append)
     cs.scan_ble()
     qtbot.waitUntil(lambda: cs._ble_scan_btn.text() == "扫描", timeout=2000)  # 扫描线程结束
     assert cs._dot.toolTip() == "扫描失败: adapter off"   # 前缀不混淆为「连接失败」（I1）
+    assert reasons == ["adapter off"]                     # scan_failed 信号带原因
 
 
 def test_make_transport_by_kind(app, qtbot):

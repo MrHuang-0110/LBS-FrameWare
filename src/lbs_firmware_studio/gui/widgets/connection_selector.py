@@ -69,6 +69,7 @@ class ConnectionSelector(QWidget):
     connection_changed = Signal(bool)   # True=已连接 False=已断开
     target_changed = Signal()           # 选中的串口/蓝牙设备变化（用于更新下发按钮使能态）
     _transport_lost = Signal()          # 链路丢失（拔线/BLE 断开，RX 线程报）→ 排队到主线程槽
+    scan_failed = Signal(str)           # BLE 扫描失败原因（供 MainWindow 显示到状态栏）
 
     def __init__(self, port_lister: "Callable | None" = None,
                  ble_scan: "Callable | None" = None,
@@ -192,8 +193,10 @@ class ConnectionSelector(QWidget):
 
     @Slot(str)
     def _on_scan_failed(self, msg: str) -> None:
-        # 扫描失败可见化：状态点红色 + tooltip 显示原因（用户反馈：蓝牙扫描不了东西无提示）
+        # 扫描失败可见化：状态点红色 + tooltip + scan_failed 信号（状态栏显示原因），
+        # 用户无需悬停即可看到（用户反馈：蓝牙扫描不了东西且只看到感叹号）。
         self._update_dot(False, error=True, msg=msg, error_prefix="扫描失败")
+        self.scan_failed.emit(msg)
         self._reset_scan_btn()
 
     def _reset_scan_btn(self) -> None:

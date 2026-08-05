@@ -290,6 +290,13 @@ def test_settings_button_bottom_key(qtbot, tmp_path, monkeypatch):
     assert actions == ["settings"]   # 且发的是 action_triggered（不切页）
 
 
+def test_scan_failed_shown_in_status_bar(qtbot, tmp_path):
+    """BLE 扫描失败 → 状态栏显示原因（MainWindow 接线，无需悬停红点）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._conn.scan_failed.emit("adapter off")
+    assert w._status.deploy_text() == "扫描失败: adapter off"
+
+
 def test_firmware_start_from_popup_wired(qtbot, tmp_path, monkeypatch):
     """固件更新从浮窗发起：start_firmware_requested → _start_firmware；**浮窗保持打开**
     （用户要求：开始后不缩回，进度条/日志在浮窗内可见）。"""

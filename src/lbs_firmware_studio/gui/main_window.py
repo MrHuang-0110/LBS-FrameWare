@@ -71,6 +71,8 @@ class MainWindow(QWidget):
         self._popup.sensor_update_requested.connect(self._on_sensor_action)
         self._popup.set_firmware_dir_getter(lambda: getattr(self._profile, "firmware_dir", ""))
         conn = self._popup.connection()
+        # BLE 扫描失败 → 状态栏显示原因（无需悬停红点，用户反馈：只看到感叹号不知原因）
+        conn.scan_failed.connect(lambda msg: self._status.set_deploy_text(f"扫描失败: {msg}"))
         # _conn/_product_selector 兼容引用：既有测试与内部使用点（下发门禁/运行按钮等）沿用
         self._conn = conn
         self._product_selector = self._popup._product
