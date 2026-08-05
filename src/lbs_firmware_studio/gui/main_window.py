@@ -200,6 +200,7 @@ class MainWindow(QWidget):
 
         self._monitor.stop_monitor()          # 停旧监控
         self._profile = new_profile
+        self.setWindowTitle(f"LBS Firmware Studio - {name}")  # 窗口标题随产品切换（用户反馈 bug）
         self._rebuild_pages()                 # 重建页面栈与右侧监控栏（属性名保留）
         # 浮窗固件目录 getter 随新产品刷新（getter 读取 self._profile，需重设以刷新文本）
         self._popup.set_firmware_dir_getter(lambda: getattr(self._profile, "firmware_dir", ""))

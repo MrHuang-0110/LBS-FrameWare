@@ -52,9 +52,11 @@ def test_product_switch_rebuilds_pages(qtbot, tmp_path):
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
     qtbot.addWidget(w)
     assert w.header_text() == "NEW-AI"
+    assert "NEW-AI" in w.windowTitle()
     old = (w._monitor, w._editor_page)
     w._product_selector.select_product("SPARK-AI")
     assert w.header_text() == "SPARK-AI"              # selector 当前产品
+    assert "SPARK-AI" in w.windowTitle()              # 窗口标题随产品切换（v3 用户反馈 bug）
     assert w.current_page_name() == "代码编辑"         # 默认停留在唯一页面
     assert w._monitor is not old[0]                   # 右侧监控栏重建（新实例）
     assert w._editor_page is not old[1]               # 编辑页重建（新实例）
