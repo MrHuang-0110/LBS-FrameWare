@@ -73,6 +73,7 @@ class MainWindow(QWidget):
         conn = self._popup.connection()
         # BLE 扫描失败 → 状态栏显示原因（无需悬停红点，用户反馈：只看到感叹号不知原因）
         conn.scan_failed.connect(self._on_scan_failed)
+        conn.connect_failed.connect(self._on_connect_failed)
         # _conn/_product_selector 兼容引用：既有测试与内部使用点（下发门禁/运行按钮等）沿用
         self._conn = conn
         self._product_selector = self._popup._product
@@ -393,6 +394,10 @@ class MainWindow(QWidget):
     def _on_scan_failed(self, msg: str) -> None:
         """BLE 扫描失败原因 → 状态栏（命名方法接线，与其余信号一致；无需悬停红点）。"""
         self._status.set_deploy_text(f"扫描失败: {msg}")
+
+    def _on_connect_failed(self, msg: str) -> None:
+        """连接失败原因 → 状态栏（无需悬停红点；用户反馈：点连接出感叹号不知原因）。"""
+        self._status.set_deploy_text(f"连接失败: {msg}")
 
     def _on_finished(self):
         self._busy = False

@@ -297,6 +297,13 @@ def test_scan_failed_shown_in_status_bar(qtbot, tmp_path):
     assert w._status.deploy_text() == "扫描失败: adapter off"
 
 
+def test_connect_failed_shown_in_status_bar(qtbot, tmp_path):
+    """连接失败 → 状态栏显示原因（用户反馈：点连接出感叹号不知原因）。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    w._conn.connect_failed.emit("connection timed out")
+    assert w._status.deploy_text() == "连接失败: connection timed out"
+
+
 def test_firmware_start_from_popup_wired(qtbot, tmp_path, monkeypatch):
     """固件更新从浮窗发起：start_firmware_requested → _start_firmware；**浮窗保持打开**
     （用户要求：开始后不缩回，进度条/日志在浮窗内可见）。"""

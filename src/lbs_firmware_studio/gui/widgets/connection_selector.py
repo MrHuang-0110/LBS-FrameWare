@@ -70,6 +70,7 @@ class ConnectionSelector(QWidget):
     target_changed = Signal()           # 选中的串口/蓝牙设备变化（用于更新下发按钮使能态）
     _transport_lost = Signal()          # 链路丢失（拔线/BLE 断开，RX 线程报）→ 排队到主线程槽
     scan_failed = Signal(str)           # BLE 扫描失败原因（供 MainWindow 显示到状态栏）
+    connect_failed = Signal(str)        # 连接失败原因（供 MainWindow 显示到状态栏）
 
     def __init__(self, port_lister: "Callable | None" = None,
                  ble_scan: "Callable | None" = None,
@@ -290,6 +291,7 @@ class ConnectionSelector(QWidget):
         self._connect_btn.setEnabled(True)
         self._set_inputs_enabled(True)
         self._update_dot(False, error=True, msg=msg)
+        self.connect_failed.emit(msg)   # 状态栏显示原因（无需悬停红点）
 
     @Slot()
     def _handle_transport_lost(self) -> None:
