@@ -291,15 +291,17 @@ def test_settings_button_bottom_key(qtbot, tmp_path, monkeypatch):
 
 
 def test_firmware_start_from_popup_wired(qtbot, tmp_path, monkeypatch):
-    """固件更新从浮窗发起：start_firmware_requested → MainWindow 收起浮窗并走 _start_firmware。"""
+    """固件更新从浮窗发起：start_firmware_requested → _start_firmware；**浮窗保持打开**
+    （用户要求：开始后不缩回，进度条/日志在浮窗内可见）。"""
     from PySide6.QtWidgets import QMessageBox
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     called = []
     w._start_firmware = lambda: called.append(True)
+    w._popup.show()
     w._popup.start_firmware_requested.emit()
     assert called == [True]
-    assert w.popup_visible() is False     # 开始后主动收起浮窗（Task 2 遗留 ①）
+    assert w.popup_visible() is True      # 开始后浮窗不收起（用户要求）
 
 
 def test_sensor_update_from_popup_opens_dialog(qtbot, tmp_path, monkeypatch):

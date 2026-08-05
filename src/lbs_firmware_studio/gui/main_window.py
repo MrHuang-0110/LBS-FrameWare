@@ -243,10 +243,8 @@ class MainWindow(QWidget):
         self._popup.raise_()
 
     def _on_firmware_requested(self) -> None:
-        """浮窗固件开始按钮（二次确认 Yes 后）→ 收起浮窗并走 worker 链路。
-        Task 2 遗留 ①：Qt.Popup 上弹模态确认框会令浮窗失焦自动关闭，此处再主动
-        hide 兜底，保证「开始后浮窗关闭」且功能不阻断。"""
-        self._popup.hide()
+        """浮窗固件开始按钮 → 直接走 worker 链路，**浮窗保持打开**（用户要求：开始后
+        不缩回，浮窗内进度条/单行进度文本/状态栏日志可见更新）。"""
         self._start_firmware()
 
     def _on_settings_action(self) -> None:
