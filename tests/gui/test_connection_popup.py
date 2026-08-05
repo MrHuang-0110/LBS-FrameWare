@@ -32,6 +32,16 @@ def test_init_shows_current_product(qtbot):
     assert "NEW-AI" in popup._product.trigger_button().text()
 
 
+def test_product_selector_keeps_visible_height_in_popup(qtbot):
+    """回归：ProductSelector 在竖向布局中容器高度塌陷为 0，触发器溢出与下方
+    连接区重叠（布局重构 v3 设备浮窗）。容器高度必须 ≥ 触发器高度。"""
+    popup = _popup(qtbot)
+    popup.show()
+    qtbot.wait(20)  # 布局激活（Qt.Popup 不宜 waitExposed，见 doc/pitfalls）
+    trigger_h = popup._product.trigger_button().height()
+    assert popup._product.height() >= trigger_h >= 30
+
+
 def test_is_popup_window_with_fixed_width(qtbot):
     popup = _popup(qtbot)
     assert popup.windowFlags() & Qt.Popup

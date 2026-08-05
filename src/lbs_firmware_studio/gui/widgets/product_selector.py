@@ -128,8 +128,11 @@ class ProductSelector(QWidget):
         super().__init__(parent)
         # 容器最小宽度对齐触发器（168px）：防止顶层 QHBoxLayout 把它压成 0 宽
         # 导致触发器溢出容器（BUG1 回归测试 test_product_selector_min_width_after_show）。
-        # 高度由顶栏 48px 容器决定，此处只约束宽度。
+        # 高度同样固定对齐触发器：防止竖向布局（设备浮窗 ConnectionPopup）把它压成
+        # 0 高，触发器溢出与下方连接区重叠（v3 回归测试
+        # test_product_selector_keeps_visible_height_in_popup）。
         self.setMinimumWidth(_TRIGGER_MIN_W)
+        self.setFixedHeight(_TRIGGER_H)
         self._names = list(profiles.keys())
         self._locked = False
         self._popup_open = False
