@@ -9,7 +9,9 @@ from ..pages.monitor_profiles import get_by_path
 class HostStatusBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("card")
+        # 顶栏 48px BG_BAR 内不使用全局 QFrame#card（BG_SIDEBAR 色块+大圆角）样式，
+        # 独立 objectName 走 QFrame#hostBar（透明背景/无边框），前景由 QLabel 令牌控制（M1）
+        self.setObjectName("hostBar")
         self._fields: list[tuple[str, str]] = []
         self._value_labels: dict[str, QLabel] = {}
         self._lay = QHBoxLayout(self)

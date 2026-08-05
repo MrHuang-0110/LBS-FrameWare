@@ -105,6 +105,7 @@ def app_qss() -> str:
     QWidget {{ background: {BG_EDITOR}; color: {TEXT_PRIMARY};
         font-family: {UI_FONT}; font-size: {FONT_BODY}px; }}
     QFrame#card {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: {RADIUS_LG}px; }}
+    QFrame#hostBar {{ background: transparent; border: none; }}
     QLabel {{ background: transparent; }}
     QGroupBox {{ background: {BG_SIDEBAR}; border: 1px solid {BORDER}; border-radius: {RADIUS_MD}px;
         margin-top: 16px; padding: {SPACE_MD}px; }}

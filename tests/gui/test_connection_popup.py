@@ -85,3 +85,51 @@ def test_set_locked_disables_product_and_connect(qtbot):
     popup.set_locked(False)
     assert popup._product.trigger_button().isEnabled() is True
     assert popup.connection()._connect_btn.isEnabled() is True
+
+
+def test_set_locked_disables_radio_group(qtbot):
+    """I1：busy 锁定时串口/蓝牙 radio 组必须禁用（防止点 radio 触发断开）。"""
+    popup = _popup(qtbot)
+    conn = popup.connection()
+    assert conn._rb_serial.isEnabled() is True
+    assert conn._rb_ble.isEnabled() is True
+    popup.set_locked(True)
+    assert conn._rb_serial.isEnabled() is False
+    assert conn._rb_ble.isEnabled() is False
+    popup.set_locked(False)
+    assert conn._rb_serial.isEnabled() is True
+    assert conn._rb_ble.isEnabled() is True
+
+
+class _FakeTransport:
+    """模拟活链路：记录 close() 调用，验证 busy 锁定时不得关闭复用链路。"""
+    def __init__(self):
+        self.closed = False
+    def close(self):
+        self.closed = True
+
+
+def test_set_locked_blocks_radio_disconnect_while_connected(qtbot):
+    """I1：已连接 → busy 锁定 → 点蓝牙 radio 不得触发 disconnect（transport.closed 保持 False）。"""
+    popup = _popup(qtbot)
+    conn = popup.connection()
+    # 对照组：未锁定时点 radio 会断开已连接链路（disconnect 会 close 并清空 _transport）
+    t1 = _FakeTransport()
+    conn._transport = t1
+    conn._rb_ble.click()
+    assert t1.closed is True
+    assert conn.is_connected() is False
+    # busy 锁定：重新建立「已连接」状态，点 radio 不得断开
+    t2 = _FakeTransport()
+    conn._transport = t2
+    conn._connect_btn.setText("断开")
+    popup.set_locked(True)
+    conn._rb_ble.click()          # 禁用态下点击应无效（QAbstractButton::click no-op）
+    assert t2.closed is False
+    assert conn._transport is t2  # 链路仍存活
+    assert conn.is_connected() is True
+    # 解锁后可恢复正常切换行为（点另一个 radio 触发断开）
+    popup.set_locked(False)
+    conn._rb_serial.click()
+    assert t2.closed is True
+    assert conn.is_connected() is False

@@ -6,7 +6,7 @@
   触发器）→ QFrame.HLine 分隔线 → ConnectionSelector(vertical=True)：串口/蓝牙
   radio 一行、端口下拉+刷新 一行、连接按钮+状态点 一行。
 - 接口：current_product()/product_changed 透传 ProductSelector；connection() 返回
-  ConnectionSelector；set_locked(busy) 禁用产品触发器与连接按钮。
+  ConnectionSelector；set_locked(busy) 禁用产品触发器与连接区（radio 组/目标/连接按钮）。
 - 浮窗定位由 MainWindow 负责（Task 3），本组件仅提供固定宽度与 sizeHint。
 - 颜色/尺寸全部走 theme 令牌，无硬编码色值；图标统一 qta fa5s.*。
 """
@@ -94,6 +94,8 @@ class ConnectionPopup(QWidget):
         return self._connection
 
     def set_locked(self, locked: bool) -> None:
-        """整体忙碌：禁用产品触发器与连接按钮（连接区其余控件由 ConnectionSelector 自管理）。"""
+        """整体忙碌：禁用产品触发器与连接区（radio 组/目标选择/连接按钮）。
+        必须锁住 radio 组，否则 busy 时点 radio 会触发 ConnectionSelector._on_kind_toggled
+        → disconnect() 关闭正在被下发流程复用的活链路（I1）。"""
         self._product.set_locked(locked)
-        self._connection._connect_btn.setEnabled(not locked)
+        self._connection.set_locked(locked)

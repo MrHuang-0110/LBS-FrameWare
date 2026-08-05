@@ -83,6 +83,7 @@ class ConnectionSelector(QWidget):
         self._conn_thread = None       # 后台建连线程引用，防 GC
         self._conn_worker = None
         self._transport = None         # 已连接的活链路（None=未连接）
+        self._locked = False            # 外部整体忙碌锁定（busy，见 set_locked）
 
         self._rb_serial = QRadioButton("串口")
         self._rb_ble = QRadioButton("蓝牙")
@@ -211,6 +212,15 @@ class ConnectionSelector(QWidget):
             return None
         return self._ble_combo.currentData()[1]
 
+    # ---- 外部锁定（busy） ----
+    def set_locked(self, locked: bool) -> None:
+        """外部整体忙碌锁定（固件/脚本传输中）：禁用模式切换、目标选择与连接按钮。
+        浮窗 busy 时仍可弹（决策），但内部控件全部禁用，防止点 radio 触发
+        disconnect() 关闭正在被下发流程复用的活链路。"""
+        self._locked = locked
+        self._set_inputs_enabled(not locked)
+        self._connect_btn.setEnabled(not locked)
+
     # ---- 连接 / 断开 ----
     def is_connected(self) -> bool:
         return self._transport is not None
@@ -283,7 +293,10 @@ class ConnectionSelector(QWidget):
         self._conn_worker = None
 
     def _set_inputs_enabled(self, enabled: bool) -> None:
-        """连接期间锁定模式切换与目标选择，避免链路与选择错位。"""
+        """连接期间锁定模式切换与目标选择，避免链路与选择错位。
+        外部 busy 锁定（_locked）优先：置 True 时恒禁用。"""
+        if self._locked:
+            enabled = False
         self._rb_serial.setEnabled(enabled)
         self._rb_ble.setEnabled(enabled)
         self._stack.setEnabled(enabled)
