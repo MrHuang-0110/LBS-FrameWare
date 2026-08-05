@@ -30,6 +30,16 @@ def test_state_text_and_color(qtbot):
     assert w.state_color() == theme.SUCCESS
 
 
+def test_set_deploy_text(qtbot):
+    """状态栏单行部署进度文本（固件更新浮窗关闭后仍可见的进展反馈）。"""
+    w = StatusBar(); qtbot.addWidget(w)
+    assert w.deploy_text() == ""
+    w.set_deploy_text("发送 NEXT-AI.bin 45%")
+    assert w.deploy_text() == "发送 NEXT-AI.bin 45%"
+    w.set_deploy_text("")
+    assert w.deploy_text() == ""
+
+
 def test_set_product(qtbot):
     """设计 B9/§4.1：状态栏不再显示产品名；set_product 兼容保留但 state_text 只含阶段文案。"""
     w = StatusBar(); qtbot.addWidget(w)

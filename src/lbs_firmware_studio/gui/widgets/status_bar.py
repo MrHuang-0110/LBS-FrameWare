@@ -14,12 +14,16 @@ class StatusBar(QWidget):
         self.setStyleSheet(f"background: {theme.STATUSBAR};")
         self._icon = QLabel()
         self._conn = QLabel("未连接")
+        self._deploy = QLabel("")   # 单行部署进度文本（固件更新浮窗关闭后仍可见的进展反馈）
         self._stage_dot = QLabel()
         self._stage_lbl = QLabel("")
         self._state = "idle"
         for lbl in (self._conn, self._stage_lbl):
             lbl.setStyleSheet(
                 f"color: {theme.STATUSBAR_ON}; font-size: {theme.FONT_CAPTION}px; background: transparent;")
+        self._deploy.setStyleSheet(
+            f"color: {theme.STATUSBAR_ON_MUTED}; font-size: {theme.FONT_CAPTION}px;"
+            f" font-family: {theme.MONO_FONT}; background: transparent;")
         self._icon.setStyleSheet("background: transparent;")
         self._stage_dot.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(self)
@@ -28,6 +32,7 @@ class StatusBar(QWidget):
         lay.addWidget(self._icon)
         lay.addWidget(self._conn)
         lay.addStretch(1)
+        lay.addWidget(self._deploy)
         lay.addWidget(self._stage_dot)
         lay.addWidget(self._stage_lbl)
         self._update_conn_icon(False)
@@ -54,6 +59,11 @@ class StatusBar(QWidget):
         产品身份由顶栏 ProductSelector 承担。"""
         pass
 
+    def set_deploy_text(self, text: str) -> None:
+        """单行部署进度文本（deployer 日志/百分比；固件更新浮窗关闭后仍可见）。"""
+        self._deploy.setText(text)
+        self._deploy.setVisible(bool(text))
+
     def set_state(self, state: str) -> None:
         self._state = state
         self._refresh_state()
@@ -67,6 +77,9 @@ class StatusBar(QWidget):
 
     def connection_text(self) -> str:
         return self._conn.text()
+
+    def deploy_text(self) -> str:
+        return self._deploy.text()
 
     def state_text(self) -> str:
         return self._stage_lbl.text()

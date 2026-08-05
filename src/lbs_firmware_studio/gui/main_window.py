@@ -354,6 +354,7 @@ class MainWindow(QWidget):
         self._deployer.progress.connect(page.on_progress)
         self._deployer.state_changed.connect(self._on_state)
         self._deployer.log.connect(page.on_log)
+        self._deployer.log.connect(self._on_deploy_log)   # 浮窗关闭后状态栏仍显示进展/卡点
         self._deployer.error.connect(self._on_error)
         self._thread = QThread()
         self._worker = DeployWorker(self._transport, self._deployer, owns_lifecycle=owns_lifecycle)
@@ -380,12 +381,20 @@ class MainWindow(QWidget):
             self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮；须在 set_locked(False) 之后，避免其覆盖禁用结果
 
     def _on_error(self, msg: str):
+        self._status.set_deploy_text("")
         QMessageBox.critical(self, "错误", msg)
+
+    def _on_deploy_log(self, msg: str) -> None:
+        """deployer 日志 → 状态栏单行文本（过滤 [DEBUG] 调试噪声；浮窗关闭后仍可见
+        进展与卡点，如 '发送 xx.bin' / 'timeout waiting for 0x43'）。"""
+        if not msg.startswith("[DEBUG]"):
+            self._status.set_deploy_text(msg)
 
     def _on_finished(self):
         self._busy = False
         self._firmware.set_busy(False)
         self._editor_page.set_busy(False)
+        self._status.set_deploy_text("")
         self._popup.set_locked(False)
         self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）；须在 set_locked(False) 之后，避免其覆盖禁用结果
         self._activity.set_locked(False)

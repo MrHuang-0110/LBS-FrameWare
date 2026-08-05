@@ -76,6 +76,19 @@ def test_switch_blocked_when_busy(qtbot, tmp_path):
     assert w.is_busy() is False
 
 
+def test_deploy_log_shown_in_status_bar(qtbot, tmp_path):
+    """deployer 日志 → 状态栏单行文本：过滤 [DEBUG] 噪声，浮窗关闭后仍可见卡点。"""
+    w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml", profiles=_two_profiles())
+    qtbot.addWidget(w)
+    assert w._status.deploy_text() == ""
+    w._on_deploy_log("[DEBUG] _send_packet_wait: 1024B sent, waiting for ACK")
+    assert w._status.deploy_text() == ""            # 调试噪声不显示
+    w._on_deploy_log("发送 NEXT-AI.bin")
+    assert w._status.deploy_text() == "发送 NEXT-AI.bin"
+    w._on_finished()
+    assert w._status.deploy_text() == ""            # 结束后清空
+
+
 def test_switch_baud_same_keeps_link(qtbot, tmp_path, monkeypatch):
     """决策点 2：切到 baud 一致产品 → 链路保持 + 自动重启监控。"""
     from lbs_firmware_studio.gui.widgets.monitor_panel import MonitorPanel
