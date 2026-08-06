@@ -12,6 +12,21 @@ from lbs_firmware_studio.gui.app import main
 
 `.spec` 入口改指它；`tests/test_build_plan.py` 的 `test_entry_shim_uses_absolute_import_of_main` 守门。
 
+## 分发安装包（Inno Setup）
+
+PyInstaller onedir（`dist/LBS-Firmware-Studio/`）是绿色目录，可直接分发；若要"安装程序"，用项目内置的 `scripts/installer.iss`：
+
+```
+# 首次：下载 Inno Setup 6 便携编译器到本地（不入库）
+#   官方直链 https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe
+#   静默装到项目 tools/innosetup：
+#   tools\innosetup-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=E:\LBS-FramWare\tools\innosetup
+# 之后：重新构建 dist（python scripts/build.py）再编安装包
+tools\innosetup\ISCC.exe scripts\installer.iss   # → dist/LBS-Firmware-Studio-v0.1.0-setup.exe
+```
+
+关键点：**per-user 安装（默认 `{localappdata}`）**——应用运行时写 `products.yaml` 与 `products/<产品>/write/`（保存脚本/固件目录），装到 Program Files 会因写权限失败。分发限制：仅 Windows x64；未签名 exe 目标机 SmartScreen 会提示"未知发布者"，需选"仍要运行"；目标机无需装 Python（PyInstaller 自带运行时）。
+
 ## BLE 传输调试方法
 
 排查设备不回 ACK 类问题时，在传输层打印原始字节与时间点：
