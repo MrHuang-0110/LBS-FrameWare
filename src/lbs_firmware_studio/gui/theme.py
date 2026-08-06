@@ -3,7 +3,7 @@ from __future__ import annotations
 
 # ── 背景分层 ──
 BG_PAGE = "#0b1018"       # 页面底色（body bg）
-BG_EDITOR = BG_PAGE       # 页面底（兼容旧名；原「编辑器/页面内容底色」语义）
+BG_EDITOR = BG_PAGE       # 页面底（兼容旧名）
 BG_SIDEBAR = "#0e151f"      # 左侧侧栏底（aside）
 BG_BAR = "#101722"          # 顶栏 + 底部状态栏底（header/statusbar）
 BG_INPUT = "#1e293b"        # 输入框/按钮底（slate-800）
@@ -40,7 +40,7 @@ ICON_HOVER = "#e2e8f0"      # 图标 hover（slate-200）
 ICON_DISABLED = "#475569"   # 图标禁用（slate-600）
 PRODUCT_GREEN = SUCCESS     # 产品名高亮色 = SUCCESS（语义引用而非重复定义）
 
-# ── 代码语法高亮（编辑器 PythonHighlighter / 语法着色，追加于「强调/语义」区块后）──
+# ── 代码语法高亮 ──
 SYNTAX_KEYWORD = "#a78bfa"  # 关键字（violet）
 SYNTAX_STRING = "#6ee7b7"   # 字符串（emerald）
 SYNTAX_NUMBER = "#fcd34d"   # 数字（amber）

@@ -58,34 +58,7 @@ class MainWindow(QWidget):
         self.setMinimumSize(900, 600)
 
         # 顶栏（HEADER_H=56，BG_BAR）：左品牌区（logo+应用名+副标题）+ 右 HostStatusBar（设计 §3）
-        self._host_bar = HostStatusBar()
-        top = QWidget(); top.setFixedHeight(theme.HEADER_H)
-        top.setStyleSheet(f"background: {theme.BG_BAR};")
-        toplay = QHBoxLayout(top)
-        toplay.setContentsMargins(theme.SPACE_LG, 0, theme.SPACE_LG, 0)
-        toplay.setSpacing(theme.SPACE_MD)
-        # 品牌区：logo 图标（ACCENT）+ 应用名（TEXT_PRIMARY 15px bold）+ 副标题（TEXT_DISABLED 11px，当前产品名）
-        logo = QLabel()
-        logo.setPixmap(qta.icon("fa5s.microchip", color=theme.ACCENT)
-                       .pixmap(theme.ICON_MD, theme.ICON_MD))
-        self._title = QLabel("LBS Firmware Studio")
-        self._title.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 15px;"
-            f" font-weight: {theme.WEIGHT_BOLD}; background: transparent;")
-        self._subtitle = QLabel(profile.name)
-        self._subtitle.setStyleSheet(
-            f"color: {theme.TEXT_DISABLED}; font-size: {theme.FONT_CAPTION}px;"
-            f" background: transparent;")
-        brand = QWidget()
-        brandlay = QHBoxLayout(brand)
-        brandlay.setContentsMargins(0, 0, 0, 0); brandlay.setSpacing(theme.SPACE_SM)
-        brandlay.addWidget(logo)
-        brandlay.addWidget(self._title)
-        brandlay.addSpacing(theme.SPACE_SM)
-        brandlay.addWidget(self._subtitle)
-        toplay.addWidget(brand)
-        toplay.addStretch(1)
-        toplay.addWidget(self._host_bar)
+        top = self._make_topbar()
 
         # 设备连接浮窗（ConnectionPopup，Qt.Popup 顶层窗口，MainWindow 持有）
         self._popup = ConnectionPopup(self._profiles, self._profile.name, parent=self)
@@ -114,19 +87,14 @@ class MainWindow(QWidget):
         self._activity.current_changed.connect(self._on_nav)
         self._activity.action_triggered.connect(self._on_action)
         self._stack = QStackedWidget()
-        self._pages: dict[str, QWidget] = {}
-        for key, _label, _icon, _en in _NAV:
-            if key in _POPUP_KEYS or key == _SETTINGS_KEY:
-                continue
-            page = self._make_page(key)
-            self._pages[key] = page
-            self._stack.addWidget(page)
+        self._build_pages()
 
         # 主内容区：页面栈（仅代码编辑页） | 右侧监控栏（MonitorPanel 固定宽 280px）
         self._monitor = self._make_monitor()
         content = QWidget()
         self._contentlay = QHBoxLayout(content)
-        self._contentlay.setContentsMargins(0, 0, 0, 0); self._contentlay.setSpacing(0)
+        self._contentlay.setContentsMargins(0, 0, 0, 0)
+        self._contentlay.setSpacing(0)
         self._contentlay.addWidget(self._stack, 1)
         self._contentlay.addWidget(self._monitor)
 
@@ -137,12 +105,18 @@ class MainWindow(QWidget):
 
         # 组装
         mid = QWidget()
-        midlay = QHBoxLayout(mid); midlay.setContentsMargins(0, 0, 0, 0); midlay.setSpacing(0)
+        midlay = QHBoxLayout(mid)
+        midlay.setContentsMargins(0, 0, 0, 0)
+        midlay.setSpacing(0)
         midlay.addWidget(self._activity)
         midlay.addWidget(content, 1)
 
-        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
-        outer.addWidget(top); outer.addWidget(mid, 1); outer.addWidget(self._status)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(top)
+        outer.addWidget(mid, 1)
+        outer.addWidget(self._status)
 
         # 页面接线（重建时整体重连）；浮窗内常驻信号仅连接一次（见构造上方）
         self._wire_pages()
@@ -150,6 +124,40 @@ class MainWindow(QWidget):
         conn.target_changed.connect(self._update_deploy_buttons)
         self._activity.set_current("editor")
         self._update_deploy_buttons()  # 初始状态：PortSelector 异步扫描完成前按钮禁用
+
+    def _make_topbar(self) -> QWidget:
+        """顶栏：左品牌区（logo+应用名+副标题）+ 右 HostStatusBar。"""
+        self._host_bar = HostStatusBar()
+        top = QWidget()
+        top.setFixedHeight(theme.HEADER_H)
+        top.setStyleSheet(f"background: {theme.BG_BAR};")
+        lay = QHBoxLayout(top)
+        lay.setContentsMargins(theme.SPACE_LG, 0, theme.SPACE_LG, 0)
+        lay.setSpacing(theme.SPACE_MD)
+        # 品牌区：logo 图标（ACCENT）+ 应用名（TEXT_PRIMARY 15px bold）+ 副标题（TEXT_DISABLED 11px，当前产品名）
+        logo = QLabel()
+        logo.setPixmap(qta.icon("fa5s.microchip", color=theme.ACCENT)
+                       .pixmap(theme.ICON_MD, theme.ICON_MD))
+        self._title = QLabel("LBS Firmware Studio")
+        self._title.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 15px;"
+            f" font-weight: {theme.WEIGHT_BOLD}; background: transparent;")
+        self._subtitle = QLabel(self._profile.name)
+        self._subtitle.setStyleSheet(
+            f"color: {theme.TEXT_DISABLED}; font-size: {theme.FONT_CAPTION}px;"
+            f" background: transparent;")
+        brand = QWidget()
+        brandlay = QHBoxLayout(brand)
+        brandlay.setContentsMargins(0, 0, 0, 0)
+        brandlay.setSpacing(theme.SPACE_SM)
+        brandlay.addWidget(logo)
+        brandlay.addWidget(self._title)
+        brandlay.addSpacing(theme.SPACE_SM)
+        brandlay.addWidget(self._subtitle)
+        lay.addWidget(brand)
+        lay.addStretch(1)
+        lay.addWidget(self._host_bar)
+        return top
 
     def _make_monitor(self) -> MonitorPanel:
         """新建右侧监控栏实例（属性名保留，测试兼容；产品切换重建）。"""
@@ -161,9 +169,20 @@ class MainWindow(QWidget):
 
     def _make_page(self, key):
         if key == "editor":
-            self._editor_page = ScriptEditorPage(); return self._editor_page
-        # _NAV 页面键已在上方覆盖；浮窗键/设置键不进入 _make_page
+            self._editor_page = ScriptEditorPage()
+            return self._editor_page
+        # 浮窗键/设置键不进入 _make_page
         raise KeyError(f"unknown page key: {key}")
+
+    def _build_pages(self) -> None:
+        """创建 _NAV 中页面类键对应的页面并入栈（浮窗键/设置键跳过）。"""
+        self._pages = {}
+        for key, _label, _icon, _en in _NAV:
+            if key in _POPUP_KEYS or key == _SETTINGS_KEY:
+                continue
+            page = self._make_page(key)
+            self._pages[key] = page
+            self._stack.addWidget(page)
 
     def _rebuild_pages(self) -> None:
         """整体重建页面栈（Editor 新实例）与右侧监控栏（新实例）。
@@ -174,13 +193,7 @@ class MainWindow(QWidget):
             w = self._stack.widget(0)
             self._stack.removeWidget(w)
             w.deleteLater()
-        self._pages = {}
-        for key, _label, _icon, _en in _NAV:
-            if key in _POPUP_KEYS or key == _SETTINGS_KEY:
-                continue
-            page = self._make_page(key)
-            self._pages[key] = page
-            self._stack.addWidget(page)
+        self._build_pages()
         # 重建右侧监控栏（新实例；浮窗固件区单例不重建，目录 getter 由调用方刷新）
         old_monitor = self._monitor
         self._monitor = self._make_monitor()
@@ -281,7 +294,8 @@ class MainWindow(QWidget):
             self._popup.hide()
         dlg = QDialog(self)
         dlg.setWindowTitle("设置")
-        lay = QVBoxLayout(dlg); lay.setContentsMargins(0, 0, 0, 0)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(SettingsPage(self._raw, self._path))
         dlg.resize(520, 460)
         dlg.exec()
@@ -327,6 +341,16 @@ class MainWindow(QWidget):
         except OSError:
             pass  # 传输层写失败，等下一帧监控数据修正按钮状态
 
+    def _set_page_busy(self, busy: bool) -> None:
+        """固件区与编辑页的忙碌态（按钮使能）统一设置。"""
+        self._firmware.set_busy(busy)
+        self._editor_page.set_busy(busy)
+
+    def _set_locked(self, locked: bool) -> None:
+        """busy 锁：禁用浮窗内产品切换/连接与 ActivityBar 导航切换（浮窗本身可弹）。"""
+        self._popup.set_locked(locked)
+        self._activity.set_locked(locked)
+
     def _update_deploy_buttons(self) -> None:
         """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
         未选串口/蓝牙设备时固件更新和脚本下发按钮均禁用，避免点了弹警告。"""
@@ -362,7 +386,8 @@ class MainWindow(QWidget):
             return
         port = self._conn.selected_target()
         if not port:
-            QMessageBox.warning(self, "提示", "未选择连接目标"); return
+            QMessageBox.warning(self, "提示", "未选择连接目标")
+            return
         # 复用持久链路时先停监控，避免 data_handler 抢占串口字节导致下发协议超时
         persistent = self._conn.persistent_transport()
         if persistent is not None and self._monitor.is_monitoring():
@@ -398,11 +423,8 @@ class MainWindow(QWidget):
         self._editor_page.on_state(state)
         self._status.set_state(state)
         self._busy = state in _BUSY_STATES
-        self._firmware.set_busy(self._busy)
-        self._editor_page.set_busy(self._busy)
-        # busy：禁用浮窗内产品切换与连接按钮（浮窗本身可弹，Task 1 决策）
-        self._popup.set_locked(self._busy)
-        self._activity.set_locked(self._busy)
+        self._set_page_busy(self._busy)
+        self._set_locked(self._busy)
         if not self._busy:
             self._update_deploy_buttons()  # 从忙碌恢复时按目标可用性更新按钮；须在 set_locked(False) 之后，避免其覆盖禁用结果
 
@@ -426,12 +448,10 @@ class MainWindow(QWidget):
 
     def _on_finished(self):
         self._busy = False
-        self._firmware.set_busy(False)
-        self._editor_page.set_busy(False)
+        self._set_page_busy(False)
         self._status.set_deploy_text("")
-        self._popup.set_locked(False)
+        self._set_locked(False)
         self._update_deploy_buttons()  # 恢复按钮使能态（未选目标时仍禁用）；须在 set_locked(False) 之后，避免其覆盖禁用结果
-        self._activity.set_locked(False)
         self._status.set_connection(None, None)
         # 下发前停了监控释放串口；下发结束后若链路仍在则自动恢复监控
         monitor = getattr(self, "_monitor", None)

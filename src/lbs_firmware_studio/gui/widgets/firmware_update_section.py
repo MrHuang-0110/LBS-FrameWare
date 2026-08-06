@@ -1,13 +1,9 @@
-"""固件更新区组件：固件源 + 开始按钮 + 进度条 + 单行进度文本（可复用）。
+"""固件更新区组件：固件源 + 开始按钮 + 进度条 + 阶段 chip + 单行进度文本（可复用）。
 
-布局重构 v3 Task 2：把 FirmwarePage 的固件更新区抽为独立组件，ConnectionPopup 与
-FirmwarePage 复用（FirmwarePage 若 Task 3 删除则仅浮窗使用）。
-- 固件源目录：只读输入框，由 set_profile(profile)（页面场景，含「待发送」摘要）或
-  set_firmware_dir_getter(getter)（浮窗场景，目录来自外部 getter）填充。
-- 开始按钮：主色按钮（QSS #primary），全宽 30px（与连接按钮同尺寸），点击**直接发
-  start_requested**（v3 调整：不再弹二次确认，用户要求）。
-- 进度：进度条（0-100，format 百分比）+ 单行进度文本（最后日志 + 百分比合成）；
-  进度条在底部（bar_row 内含阶段 chip 右侧）。
+- 固件源：set_profile(profile)（页面场景，含「待发送」摘要）或
+  set_firmware_dir_getter(getter)（浮窗场景）填充只读目录框。
+- 开始按钮：QSS #primary 主色，全宽 30px，点击直接发 start_requested（无二次确认）。
+- 阶段 chip：色点（state_color）+ 阶段文案（STAGE_TEXT）包进药丸容器，背景/边框随状态变色。
 - 深色主题全部走 theme 令牌；图标统一 qta fa5s.*。
 """
 from __future__ import annotations
@@ -36,15 +32,15 @@ class FirmwareUpdateSection(QWidget):
         # 「待发送」摘要：仅页面场景（set_profile）显示；浮窗场景无 profile 时隐藏
         self._summary = QLabel("待发送: -")
         self._summary.hide()
-        # 「开始固件更新」：主色按钮（QSS #primary = ACCENT 底 + TEXT_ON_ACCENT 前景，
-        # 图标 fa5s.download、ICON_MD）。v3 调整：全宽 + 30px 高（与连接按钮同尺寸），
-        # 点击**不再弹二次确认**（用户要求），直接发 start_requested。
-        self._start = QPushButton("开始固件更新"); self._start.setObjectName("primary")
+        # 开始按钮：QSS #primary 主色（ACCENT 底 + TEXT_ON_ACCENT 前景），全宽 30px 高，
+        # 点击直接发 start_requested（无二次确认）。
+        self._start = QPushButton("开始固件更新")
+        self._start.setObjectName("primary")
         self._start.setIcon(qta.icon("fa5s.download", color=theme.TEXT_ON_ACCENT))
         self._start.setFixedHeight(30)
         self._start.clicked.connect(self.confirm_start)
-        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT）包进药丸容器，
-        # 背景/边框随状态变色（idle 中性 / 进行中 WARNING / done SUCCESS / error ERROR）
+        # 阶段 chip：色点 + 阶段文案包进药丸容器，背景/边框随状态变色
+        #（idle 中性 / 进行中 WARNING / done SUCCESS / error ERROR）
         self._stage_dot = QLabel()
         self._stage = QLabel()
         self._stage_chip = QFrame()
@@ -54,7 +50,9 @@ class FirmwareUpdateSection(QWidget):
         chip_lay.setSpacing(theme.SPACE_XS)
         chip_lay.addWidget(self._stage_dot)
         chip_lay.addWidget(self._stage)
-        self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
         self._bar.setFormat("0%")
         # 单行当前进度：日志末条 + 进度百分比合成（TEXT_SECONDARY + mono 字体），
         # 无活动时显示「就绪」。
@@ -68,13 +66,15 @@ class FirmwareUpdateSection(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(theme.SPACE_SM)
-        row = QHBoxLayout(); row.setSpacing(theme.SPACE_SM)
+        row = QHBoxLayout()
+        row.setSpacing(theme.SPACE_SM)
         row.addWidget(QLabel("目录:"))
         row.addWidget(self._dir_edit, 1)
         lay.addLayout(row)
         lay.addWidget(self._summary)
         lay.addWidget(self._start)          # 全宽（同连接按钮）
-        bar_row = QHBoxLayout(); bar_row.setSpacing(theme.SPACE_SM)
+        bar_row = QHBoxLayout()
+        bar_row.setSpacing(theme.SPACE_SM)
         bar_row.addWidget(self._bar, 1)
         bar_row.addWidget(self._stage_chip)
         lay.addLayout(bar_row)
@@ -105,8 +105,7 @@ class FirmwareUpdateSection(QWidget):
         self._start.setEnabled(not busy)
 
     def confirm_start(self) -> None:
-        """开始固件更新：不再弹二次确认（用户要求），点击直接发 start_requested。
-        方法名保留（按钮 clicked 接线不变），实现从「QMessageBox 确认」简化为直发。"""
+        """开始固件更新：点击直接发 start_requested（无二次确认）。方法名保留（按钮接线不变）。"""
         self.start_requested.emit()
 
     # ---- 进度回填（deployer 信号接线：progress/log/state_changed）----
@@ -146,10 +145,8 @@ class FirmwareUpdateSection(QWidget):
         self._stage.setText(theme.STAGE_TEXT.get(state, state))
         self._stage.setStyleSheet(f"color: {color}; background: transparent;")
         self._update_chip_style(state)
-        # done/error 保留「最后日志 + 进度」快照（成功/失败语义）；
-        # idle 与新一轮活动状态(compiling/connecting/entering_upgrade/reconnecting/
-        # transfering)都会清掉上一轮残留文本并刷新为「就绪」——deployer 新一轮从
-        # connecting 开始（不经 idle），不清空会让第二轮开头显示上一轮残留。
+        # done/error 保留「最后日志 + 进度」快照；其余状态清掉上一轮残留并刷新为「就绪」
+        #（deployer 新一轮从 connecting 开始不经 idle，不清空会残留上一轮文本）。
         if state not in ("done", "error"):
             self._last_log = None
             self._last_pct = None

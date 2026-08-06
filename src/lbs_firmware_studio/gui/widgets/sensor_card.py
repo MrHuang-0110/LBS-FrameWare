@@ -27,9 +27,7 @@ class SensorCard(QFrame):
         self._name_title.setStyleSheet(
             f"font-weight:{theme.WEIGHT_BOLD}; color:{theme.TEXT_PRIMARY}; background:transparent;")
         # 空态提示（B6）：标题右侧灰字「无设备」，有数据时隐藏
-        self._empty = QLabel("无设备")
-        self._empty.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY}; font-size:{theme.FONT_CAPTION}px; background:transparent;")
+        self._empty = self._caption_label("无设备")
         title_row = QHBoxLayout()
         title_row.setSpacing(theme.SPACE_SM)
         title_row.addWidget(self._port_title)
@@ -44,9 +42,7 @@ class SensorCard(QFrame):
         self._grid.setVerticalSpacing(theme.SPACE_XS)
 
         # 最后刷新时间戳（B6）：卡片底部小字，有数据时显示
-        self._updated = QLabel("")
-        self._updated.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY}; font-size:{theme.FONT_CAPTION}px; background:transparent;")
+        self._updated = self._caption_label("")
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SPACE_MD, theme.SPACE_SM, theme.SPACE_MD, theme.SPACE_SM)
@@ -57,6 +53,14 @@ class SensorCard(QFrame):
         lay.addStretch(1)
 
         self.update(None, {})
+
+    @staticmethod
+    def _caption_label(text: str = "") -> QLabel:
+        """次级说明标签（灰字 + caption 字号）。"""
+        lab = QLabel(text)
+        lab.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY}; font-size:{theme.FONT_CAPTION}px; background:transparent;")
+        return lab
 
     def update(self, sensor_key: "str | None", fields: dict) -> None:
         has_data = sensor_key is not None

@@ -4,11 +4,12 @@ QScintilla 绑定 PyQt 与 PySide6 不兼容，故基于 QPlainTextEdit 自实�
 Python 语法高亮由本模块的 PythonHighlighter 提供（Task 3 接入）。
 """
 from __future__ import annotations
+import re
+import keyword
+
 from PySide6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
 from PySide6.QtCore import Qt, QRect, QSize
 from PySide6.QtGui import QColor, QPainter, QTextFormat, QSyntaxHighlighter, QTextCharFormat, QFont
-import re
-import keyword
 from .. import theme
 
 _INDENT = "    "  # 4 空格

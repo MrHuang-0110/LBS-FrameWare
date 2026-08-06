@@ -50,7 +50,7 @@ class ScriptEditorPage(QWidget):
 
         # 编辑器 + 右上角浮动按钮
         self._editor = CodeEditor()
-        self._editor.textChanged.connect(self._on_text_changed)
+        self._editor.textChanged.connect(self._mark_dirty)
 
         self._slot_btn = QPushButton("槽位 0", self._editor)
         self._slot_btn.setObjectName("floatbtn")
@@ -92,7 +92,9 @@ class ScriptEditorPage(QWidget):
         self._editor.installEventFilter(self)
 
         # 底部：进度 + 日志（日志固定矮条，编辑器占绝大部分空间）
-        self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
         self._stage = QLabel("就绪")
         self._log = LogView()
         self._log.setMinimumHeight(80)
@@ -100,7 +102,8 @@ class ScriptEditorPage(QWidget):
 
         # 卡片化（设计 §4）：页面自身 BG_PAGE，内容整体包进 QFrame#card（BG_CARD + 圆角由 QSS 提供）
         self.setStyleSheet(f"ScriptEditorPage {{ background: {theme.BG_PAGE}; }}")
-        self._card = QFrame(); self._card.setObjectName("card")
+        self._card = QFrame()
+        self._card.setObjectName("card")
         card_lay = QVBoxLayout(self._card)
         card_lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
         card_lay.setSpacing(theme.SPACE_LG)
@@ -176,9 +179,6 @@ class ScriptEditorPage(QWidget):
         return True
 
     # --- dirty 追踪 ---
-    def _on_text_changed(self):
-        self._mark_dirty()
-
     def _mark_dirty(self):
         self._dirty = True
         self._set_dirty_property(True)
