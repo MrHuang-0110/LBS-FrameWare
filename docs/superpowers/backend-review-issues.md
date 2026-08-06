@@ -70,7 +70,7 @@
 |---|---|---|---|---|
 | T3-T1 | transfer_protocol.py:126-127 | minor | `_last_frame_timeout` 用 dict 直接索引 `[self.last_frame_ack]` 无默认值：`last_frame_ack` 来自产品 YAML 配置（profile.py:18,74 原样透传、无枚举校验），配置写错（如带空格 "wait_2s " / 非法值 "wait_5s"）时在升级中途抛 KeyError——此时设备已复位进入升级模式，升级中断且无友好提示，需手动恢复。建议：改为 `.get(self.last_frame_ack, 2.0)` 回退默认值，并在 `__init__` 校验枚举值。 | 已修复 |
 | T3-T2 | transfer_protocol.py:147,149,183,218,228 | minor | 5 处 `print(f"[DEBUG] ...")` 调试残留：无开关、无门控，YmodemProtocol 已有 `log_cb` 参数（:134）却未使用（CustomFrameProtocol 已用 log_cb，风格不一致）；数据块路径每包打印一次（大固件几百~几千行 stdout 刷屏）。建议：统一转 `log_cb` 调用或环境变量门控。 | 已修复 |
-| T3-T3 | transfer_protocol.py:172 | major | `seq = seq + 1 if seq < 255 else 1`：seq 回绕 255→1 **跳过 0**，与 YMODEM 标准 8 位计数器 255→0 回绕不一致。触发条件：1024B 块固件 >255KB、128B 块(BLE 链路)脚本 >32KB 时进入回绕。若设备端严格校验 seq 连续性（期望 255 后为 0），会持续 NAK 直至重试耗尽上传失败；simulator `_read_packet`（tests/simulator.py:162-180）剥掉 seq 不校验，该路径无测试覆盖。建议：改为 `seq = (seq + 1) & 0xFF`（255→0），并在模拟器增加 seq 校验测试。**待确认**：真机接收端是否校验 seq 连续性。 | 待定 |
+| T3-T3 | transfer_protocol.py:172 | major | **原审查结论错误，已反转**。原记录建议 `seq = (seq + 1) & 0xFF`（255→0）对齐"YMODEM 标准"，657a06e 已实施——**该改动导致 NEXT-AI 固件 >255 块时被设备端截断（产品不能运行）**。真机 `ymodem.c:429-433` 证实：`blk_expect++ 后 if==0 回 1`，设备端是 **255→1 循环，0 仅用于文件头/结束块**；seq=0 数据块按结束块处理（`ymodem.c:395-400`）截断固件。已改回 `seq += 1; if seq > 255: seq = 1`（见 doc/pitfalls.md 新条目）。 | 已反转 |
 | T3-T4 | transfer_protocol.py:185,207-227 | minor | 数据块阶段设备回 NAK（CRC 校验失败请求重传，YMODEM 标准行为）时 `_wait_control` 不识别 0x15：非 CAN/非期望/非可打印字符，落入 :226「其它非期望控制字节：继续等」分支，等满 `ack_timeout` 超时后才触发重传——语义等价但每个坏块多耗一个超时周期；且 simulator `_read_packet` 不校验 CRC，NAK 分支无任何测试覆盖。建议：`_wait_control` 对 NAK 显式短路（立即触发重传），simulator 增加 CRC 错包模拟。 | 已修复 |
 | T3-T5 | transfer_protocol.py:44 | minor | `FOLDER_CMD_MAP[folder_name]` 直接索引无防护：`folder_name` 来自产品 YAML 的 `folders` 列表（deployer.py:78-81 遍历），配置了 map 之外的文件夹名（如 "apps"）时 KeyError 中断升级，与 T3-T1 同类（外部配置输入未校验）。建议：`.get` + 友好报错，或加载配置时校验。 | 已修复 |
 | T3-T6 | transfer_protocol.py:89,97,109,212 | minor（非问题） | 4 处 `max(0.05, _remaining())` 超时魔法数一致性已核实：字面一致、语义正确（最小轮询间隔 50ms，防止 deadline 归零后 read_byte(timeout=0) 忙轮询空转）。**理由**：无行为缺陷，仅建议提取命名常量并注释以提升可维护性，非必须改动。 | 非问题 |
@@ -160,7 +160,7 @@
 | T2-SC3 | 待定 | —（建议后续加扫描失败原因上报） |
 | T3-T1 | minor | e4ca397（last_frame_ack 回退） |
 | T3-T2 | minor | bd14431（print 改 log_cb） |
-| T3-T3 | major/待定 | 657a06e（seq 回绕 mod-256；真机校验待确认） |
+| T3-T3 | major/已反转 | 657a06e（seq 回绕 mod-256，错误）；已改回 255→1（真机 ymodem.c 证实，见 doc/pitfalls.md） |
 | T3-T4 | minor | —（NAK 重传靠超时兜底，建议后续补正向测试） |
 | T3-T5 | minor | 9d20110（FOLDER_CMD_MAP 清晰异常） |
 | T3-T6 | 非问题 | —（魔法数一致） |

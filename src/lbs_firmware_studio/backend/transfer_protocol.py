@@ -169,17 +169,15 @@ class YmodemProtocol(TransferProtocol):
         # 2. 文件头 (SOH/128, seq=0)
         self._send_packet_wait(t, ym.make_packet(0, header, 128), firmware=firmware)
         self._wait_control(t, ym.CRC_C, self.ack_timeout, firmware=firmware)
-        # 3. 数据块
+        # 3. 数据块：seq 为 1..255 循环（255 后回 1，勿用 &0xFF 回绕到 0）——
+        # 0 仅用于文件头/结束块，设备端 ymodem.c:429-433 会把回绕到 0 的数据块当结束块截断固件。
         seq = 1
-        offset = 0
         total = len(data)
-        while offset < total:
+        for offset in range(0, total, self.block_size):
             chunk = data[offset:offset + self.block_size]
             self._send_packet_wait(t, ym.make_packet(seq, chunk, self.block_size), firmware=firmware)
-            offset += self.block_size
-            # mod-256 递增：255 之后回绕到 0（YMODEM 标准），不得跳到 1
-            seq = (seq + 1) & 0xFF
-            on_progress(min(offset, total), total)
+            on_progress(min(offset + len(chunk), total), total)
+            seq = 1 if seq == 255 else seq + 1
         # 4. 收尾 EOT 双发 + 空结束块
         self._finish(t, firmware)
 

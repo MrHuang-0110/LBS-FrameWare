@@ -2,6 +2,14 @@
 
 > 迁移自旧知识图谱记忆（2026-07-16）。新增坑请按"现象 → 根因 → 修复 → 验证位置"格式追加/就地更新。
 
+## YMODEM 数据块序号 255 后回绕到 0 导致固件被截断
+
+- **现象**：NEXT-AI（YMODEM 协议）固件更新完成后产品不能运行；.bin 单独用 KEIL 烧录正常。固件 283,328B（277 块 × 1024B）超过 255 块。
+- **根因**：主机 `transfer_protocol.py` 数据块 seq 用 `(seq + 1) & 0xFF`（255→0）；设备端 `ymodem.c:429-433` 是 `blk_expect++ 后 if==0 回 1`（255→1），seq=0 保留给文件头/结束块。第 256 块发 seq=0 时设备按结束块 ACK 并截断（`ymodem.c:395-400`），固件只写入前 255 块 → 残缺 → 产品起不来。参考工具 `pika_deploy.py:965-968` 注释明确"勿用 &0xFF（255→0）"。
+- **修复**：`transfer_protocol.py` 数据块 seq 改为 `seq += 1; if seq > 255: seq = 1`（1..255 循环，跳过 0）。
+- **验证位置**：`src/lbs_firmware_studio/backend/transfer_protocol.py`（YmodemProtocol.send_file）；测试 `tests/test_ymodem_protocol.py::test_seq_wraps_255_to_1_skip_0` + `tests/simulator.py`（模拟器同步对齐真机 1..255 回绕、seq=0 当结束块）。
+- **同类提醒**：YMODEM 块号 0 永远只用于文件头/结束块，任何发送端实现都不应让数据块落到 0。
+
 ## BLE 下发长脚本第一帧无 ACK 超时
 
 - **现象**：SPARK-AI/NEW-AI（custom_frame 协议）蓝牙下发脚本，短脚本（单帧）成功，长脚本（多帧）第一个数据帧就无 ACK 超时。

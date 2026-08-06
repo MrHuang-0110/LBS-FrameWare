@@ -3,6 +3,12 @@ import threading
 from lbs_firmware_studio.backend import protocol_frame as pf
 from lbs_firmware_studio.backend import ymodem as ym
 
+# 单字节控制码的 bytes 形态，避免反复 bytes([...]) 包装。
+_EOT = bytes([ym.EOT])
+_ACK = bytes([ym.ACK])
+_NAK = bytes([ym.NAK])
+_CRC_C = bytes([ym.CRC_C])
+
 
 class DeviceSimulator:
     def __init__(self, serial_obj, protocol: str = "custom_frame", emit_json: bool = False):
@@ -112,46 +118,53 @@ class DeviceSimulator:
             self.ser.timeout = old
 
     def _do_ymodem_session(self, is_firmware: bool) -> None:
-        # YMODEM 接收端在收到文件头前会周期性重发 'C'。真机复位重连后主机才开始等 'C'，
-        # 故这里循环重发，避免与主机的“进入升级->复位重连”窗口错开导致握手丢失。
+        # 接收端在收到文件头前周期性重发 'C'：真机复位重连后主机才开始等 'C'，
+        # 循环重发避免与“进入升级->复位重连”窗口错开导致握手丢失。
         hdr = None
         for _ in range(60):
             if self._stop.is_set():
                 return
-            self.ser.write(bytes([ym.CRC_C]))  # 请求文件头
-            hdr = self._read_packet(timeout=1.0)
-            if hdr is not None:
-                break
+            self.ser.write(_CRC_C)  # 请求文件头
+            got = self._read_packet(timeout=1.0)
+            if got is not None and got[1] != _EOT and got[0] == 0:
+                hdr = got[1]
+                break  # 文件头块（seq=0）
         if hdr is None:
             return
         parts = hdr.split(b"\x00")  # header = name\x00size\x00...
-        self._cur_name = parts[0].decode("ascii", errors="replace") if parts[0] else "unnamed"
+        self._cur_name = parts[0].decode("ascii", errors="replace") or "unnamed"
         self._cur_size = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
         self._cur_buf = bytearray()
-        self.ser.write(bytes([ym.ACK, ym.CRC_C]))
+        self.ser.write(_ACK + _CRC_C)
         if is_firmware and self.emit_json:
             self._emit_json_burst()
-        # 收数据包：seq 从 1 起、按 mod-256 递增；不连续时回 NAK 等重发（对齐 YMODEM 标准）。
+        # 数据包：seq 1..255 循环（255 后回 1；0 仅用于文件头/结束块，对齐真机
+        # ymodem.c:429-433），不连续时回 NAK 等发送端重发同 seq 包。
         expected_seq = 1
         while not self._stop.is_set():
-            pkt = self._read_packet(timeout=12.0, expect_seq=expected_seq)
-            if pkt is None:
-                continue  # seq 校验失败已回 NAK，发送端应重发同 seq 包
-            if pkt == bytes([ym.EOT]):
-                self.ser.write(bytes([ym.NAK]))
+            got = self._read_packet(timeout=12.0, expect_seq=expected_seq)
+            if got is None:
+                continue
+            seq, pkt = got
+            if pkt == _EOT:
+                self.ser.write(_NAK)
                 self._read_byte(timeout=5.0)    # 第二个 EOT
-                self.ser.write(bytes([ym.ACK]))
-                self.ser.write(bytes([ym.CRC_C]))
+                self.ser.write(_ACK + _CRC_C)
                 self._read_packet(timeout=5.0)  # 空结束块
-                self.ser.write(bytes([ym.ACK]))
+                self.ser.write(_ACK)
                 self._finalize_ymodem_file()
                 self.ser.write(b"YMODEM OK\r\n")
                 return
+            if seq == 0:
+                # 文件头之后收到 seq=0：真机当「结束块」ACK 并截断文件（ymodem.c:395-400）
+                self.ser.write(_ACK)
+                self._finalize_ymodem_file()
+                return
             self._cur_buf.extend(pkt)  # pkt 已是纯 body
-            expected_seq = (expected_seq + 1) & 0xFF
+            expected_seq = 1 if expected_seq == 255 else expected_seq + 1
             if self.emit_json and not is_firmware:
                 self._emit_json_burst()
-            self.ser.write(bytes([ym.ACK]))
+            self.ser.write(_ACK)
 
     def _finalize_ymodem_file(self) -> None:
         if not self._cur_name:
@@ -161,11 +174,10 @@ class DeviceSimulator:
             data = data[:self._cur_size]  # 按文件头声明大小截断填充
         self.received_files[self._cur_name] = data
 
-    def _read_packet(self, timeout: float = 12.0, expect_seq: int | None = None) -> bytes | None:
-        """读一个 YMODEM 包；块大小由 mark 决定(SOH=128/STX=1024)。
-        返回纯 body(去 mark/seq/~seq/crc)，或 EOT 单字节 bytes([ym.EOT])。
-        expect_seq 非 None 时校验包 seq（mod-256 取低 8 位）；不匹配回 NAK 并返回 None，
-        模拟真机对不连续 seq 的重发请求。"""
+    def _read_packet(self, timeout: float = 12.0, expect_seq: int | None = None) -> tuple[int | None, bytes] | None:
+        """读一个 YMODEM 包；块大小由 mark 决定（SOH=128/STX=1024）。
+        返回 (seq, 纯 body)（body 已去 mark/seq/~seq/crc），EOT 返回 (None, b"\\x04")。
+        expect_seq 非 None 时校验包 seq（1..255 循环），不匹配回 NAK 并返回 None。"""
         old = self.ser.timeout
         self.ser.timeout = timeout
         try:
@@ -173,16 +185,18 @@ class DeviceSimulator:
             if not mark:
                 return None
             if mark[0] == ym.EOT:
-                return bytes([ym.EOT])
+                return (None, _EOT)
             block_size = 128 if mark[0] == ym.SOH else 1024
             rest_len = 2 + block_size + 2  # seq,~seq + body + crc16
             rest = self.ser.read(rest_len)
             if len(rest) != rest_len:
                 return None
-            if expect_seq is not None and rest[0] != (expect_seq & 0xFF):
-                self.ser.write(bytes([ym.NAK]))
+            # seq=0 例外：真机在文件头之后把 seq=0 当结束块（ymodem.c:395-400 先于
+            # bn!=blk_expect 判断），交给上层处理而不在此 NAK。
+            if expect_seq is not None and rest[0] != expect_seq and rest[0] != 0:
+                self.ser.write(_NAK)
                 return None
-            return rest[2:-2]  # 剥去 seq/~seq 前缀与 crc 尾部
+            return (rest[0], rest[2:-2])  # (seq, 剥去 seq/~seq 前缀与 crc 尾部)
         finally:
             self.ser.timeout = old
 
