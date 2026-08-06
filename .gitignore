@@ -12,3 +12,7 @@ scripts/diag_*.py
 # é¡¹ç›®è®°å¿†ç³»ç»Ÿï¼ˆMCP knowledge-graphï¼‰â€”â€”æœ¬æœºä¸“å±ï¼Œä¸å…¥åº“
 .mcp.json
 .memory/
+
+# Inno Setup ±ãĞ¯±àÒëÆ÷£¨±¾µØ¹¹½¨¹¤¾ß£¬²»Èë¿â£»°²×°½Å±¾ scripts/installer.iss Èë¿â£©
+tools/innosetup-setup.exe
+tools/innosetup/
