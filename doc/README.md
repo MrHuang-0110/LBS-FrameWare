@@ -9,6 +9,7 @@
 | `pitfalls.md` | 踩过的坑：现象、根因、修复、验证位置 |
 | `framework.md` | 项目框架：架构、模块、关键约定 |
 | `knowledge.md` | 知识：方案、工具链用法、调试方法 |
+| `ui-redesign.md` | UI 设计规范：参考 multi-device-studio.html 的色板/布局/组件细节（唯一样式来源） |
 
 ## 使用规则
 

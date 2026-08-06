@@ -2,6 +2,13 @@
 
 > 迁移自旧知识图谱记忆（2026-07-16）。新增坑请按"现象 → 根因 → 修复 → 验证位置"格式追加/就地更新。
 
+## Qt QColor() 无法解析 rgba() 字符串，半透明色须用 #AARRGGBB
+
+- **现象**：主题令牌 `BG_SELECTED = "rgba(34, 211, 238, 0.10)"` 在 QSS 中工作，但 `QColor(theme.BG_SELECTED)`（如 product_selector 的 `painter.fillRect`）`isValid()=False`，选中底渲染失效。
+- **根因**：Qt stylesheet 支持 `rgba()`（且 alpha 只接受 0-255 整数或百分比，浮点 `0.10` 会被解析为 0 全透明）；但 `QColor` 构造函数的字符串格式**不支持 `rgba()`**，只认 `#RGB/#RRGGBB/#AARRGGBB/颜色名/rgb()`。同一令牌若既进 QSS 又被 `QColor()` 解析，用 rgba() 必然有一侧失效。
+- **修复**：同时被 QSS 与 `QColor()` 使用的半透明令牌一律用 **`#AARRGGBB`**（alpha 在前，如 `#1A22d3ee` = alpha 26≈10% + #22d3ee）；仅 QSS 使用的（如 SUCCESS_BG/WARNING_BG）可保留 `rgba(r,g,b,整数)`。
+- **验证位置**：`src/lbs_firmware_studio/gui/theme.py`（BG_SELECTED）；`product_selector.py` 的 `QColor(theme.BG_SELECTED)`；`QColor('#1A22d3ee').isValid()==True, alpha==26`。
+
 ## YMODEM 数据块序号 255 后回绕到 0 导致固件被截断
 
 - **现象**：NEXT-AI（YMODEM 协议）固件更新完成后产品不能运行；.bin 单独用 KEIL 烧录正常。固件 283,328B（277 块 × 1024B）超过 255 块。
