@@ -136,7 +136,7 @@ class FirmwareUpdateSection(QWidget):
         border = QColor(base)
         border.setAlpha(80)
         self._stage_chip.setStyleSheet(
-            f"QFrame#stageChip {{ background: {bg}; border: 1px solid {border.name()};"
+            f"QFrame#stageChip {{ background: {bg}; border: 1px solid {border.name(QColor.HexArgb)};"
             f" border-radius: {theme.RADIUS_FULL}px; }}")
 
     def on_state(self, state: str) -> None:

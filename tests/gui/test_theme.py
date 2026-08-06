@@ -8,7 +8,7 @@ def test_dark_colors_defined():
     assert theme.BG_BAR == "#101722"
     assert theme.BG_INPUT == "#1e293b"
     assert theme.BG_HOVER == "#1f2b3d"
-    assert theme.BG_SELECTED == "rgba(34, 211, 238, 0.10)"
+    assert theme.BG_SELECTED == "#1A22d3ee"
     assert theme.STATUSBAR == "#101722"
     # 文字
     assert theme.TEXT_PRIMARY == "#e2e8f0"

@@ -8,7 +8,7 @@ BG_SIDEBAR = "#0e151f"      # 左侧侧栏底（aside）
 BG_BAR = "#101722"          # 顶栏 + 底部状态栏底（header/statusbar）
 BG_INPUT = "#1e293b"        # 输入框/按钮底（slate-800）
 BG_HOVER = "#1f2b3d"        # hover 提亮（可辨识一档）
-BG_SELECTED = "rgba(34, 211, 238, 0.10)"  # 选中导航项底（bg-cyan-400/10）
+BG_SELECTED = "#1A22d3ee"    # 选中导航项底（bg-cyan-400/10；#AARRGGBB，alpha 26≈10%，QSS 与 QColor 均支持）
 BG_RAISED = "#121b27"       # 弹层/浮窗/菜单底（安全连接卡）
 BG_SUBTLE = "#0d141e"       # 统计块/浅底色
 STATUSBAR = "#101722"       # 底部状态栏（深色，不再是蓝底）
@@ -28,6 +28,7 @@ STATUSBAR_ON_MUTED = "#64748b"  # 状态栏前景（弱化/禁用态）
 # ── 强调 / 语义 ──
 ACCENT = "#22d3ee"          # 主强调（cyan-400）
 ACCENT_HOVER = "#67e8f9"    # 强调 hover（cyan-300）
+ACCENT_PRESSED = "#0e7490"  # 强调 pressed（cyan-700，保持深色文字可读）
 ACCENT_FOCUS = "#67e8f9"    # 键盘焦点环（全组件键盘焦点可见，a11y）
 SUCCESS = "#34d399"         # 成功（emerald-400）
 WARNING = "#fbbf24"         # 警告（amber-400）
@@ -140,7 +141,7 @@ def app_qss() -> str:
     QPushButton#primary {{ background: {ACCENT}; color: {TEXT_ON_ACCENT}; border: none;
         border-radius: {RADIUS_SM}px; padding: 7px 16px; font-weight: {WEIGHT_BOLD}; }}
     QPushButton#primary:hover {{ background: {ACCENT_HOVER}; }}
-    QPushButton#primary:pressed {{ background: {BG_SELECTED}; }}
+    QPushButton#primary:pressed {{ background: {ACCENT_PRESSED}; }}
     QPushButton#primary:disabled {{ background: {BG_INPUT}; color: {TEXT_DISABLED}; }}
     QPushButton {{ background: {BG_INPUT}; color: {TEXT_PRIMARY};
         border: 1px solid {BORDER}; border-radius: {RADIUS_SM}px; padding: 5px 12px; }}

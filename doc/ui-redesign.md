@@ -19,7 +19,7 @@
 | BG_RAISED | `#121b27` | 弹层/浮窗/菜单底（安全连接卡 bg-[#121b27]） |
 | BG_INPUT | `#1e293b` | 输入框/按钮底（slate-800） |
 | BG_HOVER | `#1f2b3d` | hover 提亮（可辨识一档） |
-| BG_SELECTED | `rgba(34, 211, 238, 0.10)` | 选中导航项底（bg-cyan-400/10） |
+| BG_SELECTED | `#1A22d3ee` | 选中导航项底（bg-cyan-400/10；#AARRGGBB，alpha 26≈10%，QSS 与 QColor 均支持） |
 | BG_SUBTLE | `#0d141e` | 统计块/浅底色（bg-[#0d141e]） |
 | ACCENT | `#22d3ee` | 主强调（cyan-400） |
 | ACCENT_HOVER | `#67e8f9` | 强调 hover（cyan-300） |
