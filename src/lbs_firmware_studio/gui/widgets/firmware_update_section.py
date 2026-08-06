@@ -15,7 +15,8 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QProgressBar, QLineEdit)
+                               QPushButton, QProgressBar, QLineEdit, QFrame)
+from PySide6.QtGui import QColor
 from PySide6.QtCore import Signal
 import qtawesome as qta
 
@@ -42,10 +43,17 @@ class FirmwareUpdateSection(QWidget):
         self._start.setIcon(qta.icon("fa5s.download", color=theme.TEXT_ON_ACCENT))
         self._start.setFixedHeight(30)
         self._start.clicked.connect(self.confirm_start)
-        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT），文字随状态变色；
-        # 放进度条行右侧（用户要求进度条在底部，chip 随行）
+        # 阶段 chip：色点（state_color 矢量图标）+ 阶段文案（STAGE_TEXT）包进药丸容器，
+        # 背景/边框随状态变色（idle 中性 / 进行中 WARNING / done SUCCESS / error ERROR）
         self._stage_dot = QLabel()
         self._stage = QLabel()
+        self._stage_chip = QFrame()
+        self._stage_chip.setObjectName("stageChip")
+        chip_lay = QHBoxLayout(self._stage_chip)
+        chip_lay.setContentsMargins(theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_MD, theme.SPACE_XS)
+        chip_lay.setSpacing(theme.SPACE_XS)
+        chip_lay.addWidget(self._stage_dot)
+        chip_lay.addWidget(self._stage)
         self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
         self._bar.setFormat("0%")
         # 单行当前进度：日志末条 + 进度百分比合成（TEXT_SECONDARY + mono 字体），
@@ -68,8 +76,7 @@ class FirmwareUpdateSection(QWidget):
         lay.addWidget(self._start)          # 全宽（同连接按钮）
         bar_row = QHBoxLayout(); bar_row.setSpacing(theme.SPACE_SM)
         bar_row.addWidget(self._bar, 1)
-        bar_row.addWidget(self._stage_dot)
-        bar_row.addWidget(self._stage)
+        bar_row.addWidget(self._stage_chip)
         lay.addLayout(bar_row)
         lay.addWidget(self._progress_text)
 
@@ -114,12 +121,31 @@ class FirmwareUpdateSection(QWidget):
         self._last_pct = pct
         self._refresh_progress_text()
 
+    def _update_chip_style(self, state: str) -> None:
+        """阶段 chip 背景/边框随状态变色（设计 §4 状态 chip）。
+        done=SUCCESS_BG / error=ERROR_BG / 进行中=WARNING_BG / idle=中性；
+        边框用语义色半透明（QColor.setAlpha 后 name() 得 hex8）。"""
+        if state == "done":
+            bg, base = theme.SUCCESS_BG, theme.SUCCESS
+        elif state == "error":
+            bg, base = theme.ERROR_BG, theme.ERROR
+        elif state == "idle":
+            bg, base = theme.BG_INPUT, theme.ICON_IDLE
+        else:  # compiling/connecting/entering_upgrade/reconnecting/transfering
+            bg, base = theme.WARNING_BG, theme.WARNING
+        border = QColor(base)
+        border.setAlpha(80)
+        self._stage_chip.setStyleSheet(
+            f"QFrame#stageChip {{ background: {bg}; border: 1px solid {border.name()};"
+            f" border-radius: {theme.RADIUS_FULL}px; }}")
+
     def on_state(self, state: str) -> None:
         color = theme.state_color(state)
         self._stage_dot.setPixmap(qta.icon("fa5s.circle", color=color)
                                   .pixmap(theme.ICON_SM, theme.ICON_SM))
         self._stage.setText(theme.STAGE_TEXT.get(state, state))
         self._stage.setStyleSheet(f"color: {color}; background: transparent;")
+        self._update_chip_style(state)
         # done/error 保留「最后日志 + 进度」快照（成功/失败语义）；
         # idle 与新一轮活动状态(compiling/connecting/entering_upgrade/reconnecting/
         # transfering)都会清掉上一轮残留文本并刷新为「就绪」——deployer 新一轮从

@@ -4,6 +4,7 @@ MVP 方案（对所有传感器/产品统一适用，字段增改无需改代码
 from __future__ import annotations
 import time
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QWidget
+from PySide6.QtGui import QColor
 from .. import theme
 from ..pages.monitor_profiles import sensor_display_name
 
@@ -13,11 +14,17 @@ class SensorCard(QFrame):
         super().__init__(parent)
         self._port = port
         self._rows: list[tuple[str, str]] = []
+        self._accent = theme.SENSOR_COLORS[port % 8]   # 本端口 accent 色（P1–P8 色板）
         self.setObjectName("card")
         self.setMinimumHeight(120)
 
-        self._title = QLabel()
-        self._title.setStyleSheet(
+        # 标题「端口 N · 类型名」：端口号部分 mono + accent 色，类型名 TEXT_PRIMARY
+        self._port_title = QLabel()
+        self._port_title.setStyleSheet(
+            f"font-weight:{theme.WEIGHT_BOLD}; font-family:{theme.MONO_FONT};"
+            f" color:{self._accent}; background:transparent;")
+        self._name_title = QLabel()
+        self._name_title.setStyleSheet(
             f"font-weight:{theme.WEIGHT_BOLD}; color:{theme.TEXT_PRIMARY}; background:transparent;")
         # 空态提示（B6）：标题右侧灰字「无设备」，有数据时隐藏
         self._empty = QLabel("无设备")
@@ -25,7 +32,8 @@ class SensorCard(QFrame):
             f"color:{theme.TEXT_SECONDARY}; font-size:{theme.FONT_CAPTION}px; background:transparent;")
         title_row = QHBoxLayout()
         title_row.setSpacing(theme.SPACE_SM)
-        title_row.addWidget(self._title)
+        title_row.addWidget(self._port_title)
+        title_row.addWidget(self._name_title)
         title_row.addWidget(self._empty)
         title_row.addStretch(1)
 
@@ -51,18 +59,32 @@ class SensorCard(QFrame):
         self.update(None, {})
 
     def update(self, sensor_key: "str | None", fields: dict) -> None:
-        if sensor_key:
-            self._title.setText(f"端口 {self._port} · {sensor_display_name(sensor_key)}")
+        has_data = sensor_key is not None
+        self._port_title.setText(f"端口 {self._port}")
+        self._name_title.setText(sensor_display_name(sensor_key) if has_data else "")
+        if has_data:
             self._empty.setText("")
             self._empty.setVisible(False)
             self._updated.setText(f"更新 {time.strftime('%H:%M:%S')}")
         else:
-            self._title.setText(f"端口 {self._port}")
             self._empty.setText("无设备")
             self._empty.setVisible(True)
             self._updated.setText("")
+        self._apply_card_style(has_data)
         self._rows = [(str(k), str(v)) for k, v in fields.items()]
         self._rebuild_grid()
+
+    def _apply_card_style(self, has_data: bool) -> None:
+        """卡片边框：有数据用本端口 accent 色半透明（hex8），空态用 BORDER。"""
+        if has_data:
+            border = QColor(self._accent)
+            border.setAlpha(90)
+            border_hex = border.name()   # alpha<255 时 name() 返回 #AARRGGBB
+        else:
+            border_hex = theme.BORDER
+        self.setStyleSheet(
+            f"QFrame#card {{ border: 1px solid {border_hex};"
+            f" border-radius: {theme.RADIUS_LG}px; }}")
 
     def _rebuild_grid(self) -> None:
         while self._grid.count():
@@ -74,13 +96,17 @@ class SensorCard(QFrame):
             klab = QLabel(k + ":")
             klab.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; background:transparent;")
             vlab = QLabel(v)
-            vlab.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; background:transparent;")
+            # 数值：mono 等宽 + TEXT_PRIMARY（参考设计 §4 等宽数字）
+            vlab.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY}; font-family:{theme.MONO_FONT}; background:transparent;")
             self._grid.addWidget(klab, i, 0)
             self._grid.addWidget(vlab, i, 1)
 
     # --- 测试访问器 ---
     def title_text(self) -> str:
-        return self._title.text()
+        """标题文本：端口部分 + (· 类型名)。空态仅「端口 N」。"""
+        name = self._name_title.text()
+        return f"{self._port_title.text()} · {name}" if name else self._port_title.text()
 
     def rows(self) -> list[tuple[str, str]]:
         return list(self._rows)

@@ -29,6 +29,7 @@ class _LineNumberArea(QWidget):
 class CodeEditor(QPlainTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("codeEditor")   # 全局 QSS: QPlainTextEdit#codeEditor { background: BG_CODE; }
         self._lna = _LineNumberArea(self)
         self.blockCountChanged.connect(self._update_lna_width)
         self.updateRequest.connect(self._update_lna)
@@ -61,7 +62,7 @@ class CodeEditor(QPlainTextEdit):
 
     def paint_line_numbers(self, event):
         painter = QPainter(self._lna)
-        painter.fillRect(event.rect(), QColor(theme.BG_SIDEBAR))
+        painter.fillRect(event.rect(), QColor(theme.BG_EDITOR))
         block = self.firstVisibleBlock()
         num = block.blockNumber()
         top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
@@ -116,14 +117,14 @@ class PythonHighlighter(QSyntaxHighlighter):
 
     def __init__(self, document):
         super().__init__(document)
-        kw = _fmt(theme.ACCENT, bold=True)
+        kw = _fmt(theme.SYNTAX_KEYWORD, bold=True)   # 关键字（violet，bold 保留）
         self._rules = []
         for word in keyword.kwlist:
             self._rules.append((re.compile(rf"\b{word}\b"), kw))
-        self._rules.append((re.compile(r"@\w+"), _fmt(theme.WARNING)))          # 装饰器
-        self._rules.append((re.compile(r"\b[0-9]+\.?[0-9]*\b"), _fmt(theme.WARNING)))  # 数字
-        self._str_fmt = _fmt(theme.SUCCESS)
-        self._comment_fmt = _fmt(theme.TEXT_COMMENT, italic=True)
+        self._rules.append((re.compile(r"@\w+"), _fmt(theme.SYNTAX_FUNC)))          # 装饰器（cyan）
+        self._rules.append((re.compile(r"\b[0-9]+\.?[0-9]*\b"), _fmt(theme.SYNTAX_NUMBER)))  # 数字（amber）
+        self._str_fmt = _fmt(theme.SYNTAX_STRING)    # 字符串（emerald）
+        self._comment_fmt = _fmt(theme.TEXT_COMMENT, italic=True)  # 注释（灰，italic 保留）
 
     def highlightBlock(self, text: str) -> None:
         for pattern, fmt in self._rules:

@@ -2,7 +2,7 @@
 单页闭环：选模板→编辑→保存(<slot>.py)→选槽→下发。GUI 只做界面，下发经 worker。"""
 from __future__ import annotations
 from pathlib import Path
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QComboBox, QProgressBar, QMessageBox,
                                QMenu, QFileDialog)
 from PySide6.QtCore import Signal
@@ -57,7 +57,8 @@ class ScriptEditorPage(QWidget):
         self._slot_btn.clicked.connect(self._open_slot_menu)
         self._deploy_btn = QPushButton(self._editor)
         self._deploy_btn.setObjectName("floatbtn")
-        self._deploy_btn.setIcon(qta.icon("fa5s.upload", color=theme.TEXT_ON_ACCENT))
+        # 浮槽按钮底为 BG_INPUT(深色)，用 TEXT_PRIMARY 才能可见（勿用深色 TEXT_ON_ACCENT）
+        self._deploy_btn.setIcon(qta.icon("fa5s.upload", color=theme.TEXT_PRIMARY))
         self._deploy_btn.setToolTip("下发到设备")
         self._deploy_btn.clicked.connect(self._on_deploy)
 
@@ -97,14 +98,22 @@ class ScriptEditorPage(QWidget):
         self._log.setMinimumHeight(80)
         self._log.setMaximumHeight(140)
 
+        # 卡片化（设计 §4）：页面自身 BG_PAGE，内容整体包进 QFrame#card（BG_CARD + 圆角由 QSS 提供）
+        self.setStyleSheet(f"ScriptEditorPage {{ background: {theme.BG_PAGE}; }}")
+        self._card = QFrame(); self._card.setObjectName("card")
+        card_lay = QVBoxLayout(self._card)
+        card_lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
+        card_lay.setSpacing(theme.SPACE_LG)
+        card_lay.addLayout(top)
+        card_lay.addWidget(self._editor, 1)   # 唯一可伸缩
+        card_lay.addWidget(self._stage)
+        card_lay.addWidget(self._bar)
+        card_lay.addWidget(self._log)         # stretch=0，固定矮
+
         lay = QVBoxLayout(self)
         lay.setContentsMargins(theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG, theme.SPACE_LG)
-        lay.setSpacing(theme.SPACE_SM)
-        lay.addLayout(top)
-        lay.addWidget(self._editor, 1)   # 唯一可伸缩
-        lay.addWidget(self._stage)
-        lay.addWidget(self._bar)
-        lay.addWidget(self._log)         # stretch=0，固定矮
+        lay.setSpacing(0)
+        lay.addWidget(self._card, 1)
 
     # --- profile ---
     def set_profile(self, profile) -> None:

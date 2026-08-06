@@ -60,7 +60,7 @@ class MonitorPanel(QWidget):
 
         # 卡片区（两列）
         self._grid = QGridLayout()
-        self._grid.setHorizontalSpacing(12); self._grid.setVerticalSpacing(12)
+        self._grid.setHorizontalSpacing(theme.SPACE_MD); self._grid.setVerticalSpacing(theme.SPACE_MD)
         self._grid_host = QWidget(); self._grid_host.setLayout(self._grid)
 
         # 未知产品提示

@@ -1,4 +1,4 @@
-"""VS Code 风格底部状态栏：蓝底 24px，左连接状态，右部署阶段（去产品名，设计 §4.1/B9）。
+"""底部状态栏（24px BG_BAR 深色）：左连接状态，右部署阶段（去产品名，设计 §3/§4.1/B9）。
 阶段文案唯一来源 = theme.STAGE_TEXT（§3.6 C4）；前景统一走 STATUSBAR_ON 组（A7）；
 状态点用矢量图标 fa5s.*（A3），颜色走令牌。"""
 from __future__ import annotations

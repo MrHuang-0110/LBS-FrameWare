@@ -1,18 +1,28 @@
-"""VS Code 风格 Activity Bar：纯图标竖条，悬停 tooltip，选中左侧 2px 蓝亮条。"""
+"""三段式布局左侧宽侧栏（256px，BG_SIDEBAR）：分组小标题「工作台」+ 图标+文字导航项。
+选中 = BG_SELECTED 底 + ACCENT 文字/图标 + 左 3px ACCENT 亮条；常态 ICON_IDLE/TEXT_SECONDARY，
+hover 背景 BG_HOVER 提亮；底部设置键 stretch 沉底，点击只发 action_triggered（设计 doc/ui-redesign.md §3）。"""
 from __future__ import annotations
 import qtawesome as qta
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton, QLabel
 from PySide6.QtCore import Signal, Qt, QSize
 from .. import theme
 
-# 功能名 tooltip
+# 功能名（按钮文字标签，tooltip 同源）
 _LABELS = {
-    "device": "固件与监控", "firmware": "固件更新", "scripts": "脚本下发",
+    "device": "设备连接", "firmware": "固件更新", "scripts": "脚本下发",
     "editor": "代码编辑", "monitor": "数据监控", "settings": "设置",
 }
 
+# 分组小标题（设计 §3：10px 灰字 + 字距；参考 HTML uppercase tracking）
+_GROUP_TITLE = "工作台"
+
 # 浮窗触发类 key：点击只发 action_triggered（弹浮窗），不切页、不改变选中态
 _POPUP_KEYS = {"device", "sensor"}
+
+# 导航项行高约 44px；左内边距 16px（选中态 3px 亮条占用后视觉对齐）
+_ITEM_H = 44
+_PAD_LEFT = theme.SPACE_LG          # 16px，常态文字缩进
+_PAD_LEFT_SEL = _PAD_LEFT - 3       # 13px，选中态补偿 3px 亮条宽度
 
 # E3：键盘焦点环（a11y），全部按钮共用；不参与图标着色逻辑
 _FOCUS_QSS = (
@@ -29,8 +39,9 @@ class ActivityBar(QWidget):
                  popup_keys: set[str] | None = None,
                  settings_key: str | None = None):
         super().__init__(parent)
-        self.setFixedWidth(48)
-        self.setStyleSheet(f"background: {theme.BG_BAR};")
+        self.setFixedWidth(theme.SIDEBAR_WIDTH)
+        self.setStyleSheet(f"background: {theme.BG_SIDEBAR};"
+                           f" border-right: 1px solid {theme.BORDER};")
         self._items = items
         self._popup_keys = set(popup_keys) if popup_keys is not None else set(_POPUP_KEYS)
         # 底部设置键：key 必须存在于 items（图标由 items 提供）；不存在则视为未指定
@@ -43,18 +54,28 @@ class ActivityBar(QWidget):
         self._locked = False
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 4, 0, 4); lay.setSpacing(0)
+        lay.setContentsMargins(0, theme.SPACE_SM, 0, theme.SPACE_SM)
+        lay.setSpacing(theme.SPACE_XS)
+        # 分组小标题（工作台，位于导航项之前）
+        group = QLabel(_GROUP_TITLE)
+        group.setStyleSheet(
+            f"color: {theme.TEXT_DISABLED}; background: transparent;"
+            f" font-size: 10px; letter-spacing: 2px;"
+            f" padding: {theme.SPACE_SM}px {theme.SPACE_LG}px {theme.SPACE_XS}px {theme.SPACE_LG}px;")
+        lay.addWidget(group)
         for key, icon_name, enabled in items:
             if key == self._settings_key:
                 lay.addStretch(1)   # 底部设置键沉底（stretch 分隔）
             btn = self._make_button(key, icon_name, enabled)
             self._buttons[key] = btn
-            lay.addWidget(btn, 0, Qt.AlignHCenter)
+            lay.addWidget(btn)
 
     def _make_button(self, key, icon_name, enabled):
         btn = QToolButton()
-        btn.setFixedSize(48, 48)
-        btn.setIconSize(QSize(24, 24))
+        btn.setFixedSize(theme.SIDEBAR_WIDTH, _ITEM_H)
+        btn.setIconSize(QSize(theme.ICON_LG, theme.ICON_LG))
+        btn.setText(_LABELS.get(key, key))
+        btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         btn.setToolTip(_LABELS.get(key, key) + ("" if enabled else " · 即将推出"))
         btn.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
         btn.setFocusPolicy(Qt.StrongFocus)   # E3：Tab 可达 + 焦点环
@@ -62,8 +83,13 @@ class ActivityBar(QWidget):
         btn.setIcon(qta.icon(icon_name, color=color))
         self._icon_colors[key] = color
         btn.setStyleSheet(
-            f"QToolButton {{ border: none; background: transparent; }}"
-            f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
+            f"QToolButton {{ border: none; background: transparent;"
+            f" color: {theme.TEXT_SECONDARY}; border-radius: {theme.RADIUS_SM}px;"
+            f" padding-left: {_PAD_LEFT}px;"
+            f" font-size: {theme.FONT_BODY}px; text-align: left; }}"
+            f"QToolButton:hover {{ background: {theme.BG_HOVER};"
+            f" color: {theme.TEXT_PRIMARY}; }}"
+            f"QToolButton:disabled {{ color: {theme.TEXT_DISABLED}; }} {_FOCUS_QSS}")
         btn.setEnabled(enabled)
         if enabled:
             btn.clicked.connect(lambda _=False, k=key: self._on_clicked(k))
@@ -97,23 +123,31 @@ class ActivityBar(QWidget):
                 continue
             selected = (key == self._current)
             if selected:
-                color = theme.TEXT_ON_ACCENT
+                color = theme.ACCENT
             elif self._locked:
                 color = theme.ICON_DISABLED   # 锁定时置灰非当前项，给出视觉提示
             else:
                 color = theme.ICON_IDLE
             self._icon_colors[key] = color
             btn.setIcon(qta.icon(self._icon_names[key], color=color))
-            # 选中：左侧 2px ACCENT 亮条 + BG_HOVER 底；focus 环叠加（E3）
+            # 选中：BG_SELECTED 底 + ACCENT 文字/图标 + 左 3px ACCENT 亮条；focus 环叠加（E3）
             if selected:
                 btn.setStyleSheet(
-                    f"QToolButton {{ border: none; background: {theme.BG_HOVER};"
-                    f" border-left: 2px solid {theme.ACCENT}; }}"
-                    f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
+                    f"QToolButton {{ border: none; background: {theme.BG_SELECTED};"
+                    f" color: {theme.ACCENT}; border-radius: {theme.RADIUS_SM}px;"
+                    f" border-left: 3px solid {theme.ACCENT};"
+                    f" padding-left: {_PAD_LEFT_SEL}px;"
+                    f" font-size: {theme.FONT_BODY}px; text-align: left; }}"
+                    f"QToolButton:hover {{ background: {theme.BG_SELECTED}; }} {_FOCUS_QSS}")
             else:
                 btn.setStyleSheet(
-                    f"QToolButton {{ border: none; background: transparent; }}"
-                    f"QToolButton:hover {{ background: {theme.BG_HOVER}; }} {_FOCUS_QSS}")
+                    f"QToolButton {{ border: none; background: transparent;"
+                    f" color: {theme.TEXT_SECONDARY}; border-radius: {theme.RADIUS_SM}px;"
+                    f" padding-left: {_PAD_LEFT}px;"
+                    f" font-size: {theme.FONT_BODY}px; text-align: left; }}"
+                    f"QToolButton:hover {{ background: {theme.BG_HOVER};"
+                    f" color: {theme.TEXT_PRIMARY}; }}"
+                    f"QToolButton:disabled {{ color: {theme.TEXT_DISABLED}; }} {_FOCUS_QSS}")
 
     def current_key(self) -> str:
         return self._current

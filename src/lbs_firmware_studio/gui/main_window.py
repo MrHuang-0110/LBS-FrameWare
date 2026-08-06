@@ -1,12 +1,13 @@
-"""主窗口：左 Activity Bar + 顶栏（主机信息）+ 主内容区（页面栈 + 右侧监控栏）+ 底部 StatusBar。
+"""主窗口：左宽侧栏 + 顶栏（品牌区 + 主机信息）+ 主内容区（页面栈 + 右侧监控栏）+ 底部 StatusBar。
 布局重构 v3（设计 §4.1/§4.2）：ActivityBar 精简为 device(浮窗)/editor(页面) + 左下角 settings(弹对话框)；
 设备连接/固件更新/传感器更新全部收进 ConnectionPopup 浮窗；监控数据常驻右侧 MonitorPanel；
 固件与监控页/设置页从页面栈移除（FirmwarePage/MonitorPage 不再进 _make_page，SettingsPage 改弹对话框）。
 产品切换：设备浮窗内 ProductSelector 触发，MainWindow 窗内重建页面栈与右侧监控栏（设计 §4.2）。"""
 from __future__ import annotations
 from pathlib import Path
+import qtawesome as qta
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
-                               QStackedWidget, QMessageBox, QDialog)
+                               QStackedWidget, QMessageBox, QDialog, QLabel)
 from PySide6.QtCore import QThread
 from . import theme
 from .widgets.activity_bar import ActivityBar
@@ -56,11 +57,34 @@ class MainWindow(QWidget):
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 
-        # 顶栏（48px，BG_BAR）：只放主机信息（HostStatusBar，横向紧凑）
+        # 顶栏（HEADER_H=56，BG_BAR）：左品牌区（logo+应用名+副标题）+ 右 HostStatusBar（设计 §3）
         self._host_bar = HostStatusBar()
-        top = QWidget(); top.setFixedHeight(48); top.setStyleSheet(f"background: {theme.BG_BAR};")
-        toplay = QHBoxLayout(top); toplay.setContentsMargins(theme.SPACE_MD, 0, theme.SPACE_MD, 0)
-        toplay.setSpacing(theme.SPACE_SM)
+        top = QWidget(); top.setFixedHeight(theme.HEADER_H)
+        top.setStyleSheet(f"background: {theme.BG_BAR};")
+        toplay = QHBoxLayout(top)
+        toplay.setContentsMargins(theme.SPACE_LG, 0, theme.SPACE_LG, 0)
+        toplay.setSpacing(theme.SPACE_MD)
+        # 品牌区：logo 图标（ACCENT）+ 应用名（TEXT_PRIMARY 15px bold）+ 副标题（TEXT_DISABLED 11px，当前产品名）
+        logo = QLabel()
+        logo.setPixmap(qta.icon("fa5s.microchip", color=theme.ACCENT)
+                       .pixmap(theme.ICON_MD, theme.ICON_MD))
+        self._title = QLabel("LBS Firmware Studio")
+        self._title.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 15px;"
+            f" font-weight: {theme.WEIGHT_BOLD}; background: transparent;")
+        self._subtitle = QLabel(profile.name)
+        self._subtitle.setStyleSheet(
+            f"color: {theme.TEXT_DISABLED}; font-size: {theme.FONT_CAPTION}px;"
+            f" background: transparent;")
+        brand = QWidget()
+        brandlay = QHBoxLayout(brand)
+        brandlay.setContentsMargins(0, 0, 0, 0); brandlay.setSpacing(theme.SPACE_SM)
+        brandlay.addWidget(logo)
+        brandlay.addWidget(self._title)
+        brandlay.addSpacing(theme.SPACE_SM)
+        brandlay.addWidget(self._subtitle)
+        toplay.addWidget(brand)
+        toplay.addStretch(1)
         toplay.addWidget(self._host_bar)
 
         # 设备连接浮窗（ConnectionPopup，Qt.Popup 顶层窗口，MainWindow 持有）
@@ -204,6 +228,7 @@ class MainWindow(QWidget):
         self._monitor.stop_monitor()          # 停旧监控
         self._profile = new_profile
         self.setWindowTitle(f"LBS Firmware Studio - {name}")  # 窗口标题随产品切换（用户反馈 bug）
+        self._subtitle.setText(name)                          # 顶栏副标题同步当前产品名
         self._rebuild_pages()                 # 重建页面栈与右侧监控栏（属性名保留）
         # 浮窗固件目录 getter 随新产品刷新（getter 读取 self._profile，需重设以刷新文本）
         self._popup.set_firmware_dir_getter(lambda: getattr(self._profile, "firmware_dir", ""))

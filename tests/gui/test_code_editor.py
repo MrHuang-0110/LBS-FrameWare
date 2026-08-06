@@ -54,10 +54,10 @@ def test_highlighter_colors_keywords(qtbot):
     ed.set_text("import time  # comment")
     ed.document().firstBlock().layout()
 
-    # 关键字 span：'import' → ACCENT + Bold
+    # 关键字 span：'import' → SYNTAX_KEYWORD + Bold
     kw = _fg_at(ed, 0, len("import"))
     assert kw is not None, "关键字 'import' span 未定位到"
-    assert kw.foreground().color().name().lower() == theme.ACCENT.lower()
+    assert kw.foreground().color().name().lower() == theme.SYNTAX_KEYWORD.lower()
     assert kw.fontWeight() == QFont.Bold
 
     # 注释 span：'# comment' 从第 13 列到行尾 → TEXT_DISABLED + Italic
@@ -77,7 +77,7 @@ def test_highlighter_colors_strings(qtbot):
     ed.document().firstBlock().layout()
     s = _fg_at(ed, 4, len("'hi'"))
     assert s is not None, "字符串 span 未定位到"
-    assert s.foreground().color().name().lower() == theme.SUCCESS.lower()
+    assert s.foreground().color().name().lower() == theme.SYNTAX_STRING.lower()
 
 
 def test_highlighter_colors_numbers(qtbot):
@@ -87,7 +87,7 @@ def test_highlighter_colors_numbers(qtbot):
     ed.document().firstBlock().layout()
     n = _fg_at(ed, 4, len("42"))
     assert n is not None, "数字 span 未定位到"
-    assert n.foreground().color().name().lower() == theme.WARNING.lower()
+    assert n.foreground().color().name().lower() == theme.SYNTAX_NUMBER.lower()
 
 
 def test_highlighter_instance_attached(qtbot):
