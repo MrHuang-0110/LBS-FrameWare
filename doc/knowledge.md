@@ -27,6 +27,17 @@ tools\innosetup\ISCC.exe scripts\installer.iss   # → dist/LBS-Firmware-Studio-
 
 关键点：**per-user 安装（默认 `{localappdata}`）**——应用运行时写 `products.yaml` 与 `products/<产品>/write/`（保存脚本/固件目录），装到 Program Files 会因写权限失败。分发限制：仅 Windows x64；未签名 exe 目标机 SmartScreen 会提示"未知发布者"，需选"仍要运行"；目标机无需装 Python（PyInstaller 自带运行时）。
 
+## SPARK-AI 遥控模式命令（0xC2 / 0xC0）
+
+SPARK-AI 进入/退出遥控模式为无 payload 的 custom_frame 命令，帧由 `protocol_frame.build_frame(cmd, b"")` 生成，逐字节固定：
+
+- 进入遥控模式：`5A 97 98 00 C2 4B A5`（`CMD_REMOTE_ENTER = 0xC2`）
+- 退出遥控模式：`5A 97 98 00 C0 49 A5`（`CMD_REMOTE_EXIT = 0xC0`）
+
+UI 位置：右侧 `MonitorPanel` 监控栏（连接提示条下方），**仅 SPARK-AI** 显示（`_is_remote_supported()` 按产品名判定），非 SPARK-AI 隐藏以免误发。按钮仅在「有持久链路 + 非 busy」时启用，产品切换重建监控栏后由 `_wire_pages()` 重新接线。
+
+分层约定：`MonitorPanel` 只发 `remote_mode_requested("enter"|"exit")` 信号，不碰协议/transport；`MainWindow._on_remote_mode_requested()` 取 `_conn.persistent_transport()` 写帧并吞 `OSError`（与 `_on_run_toggle` 的 0xB6 同构）。
+
 ## BLE 传输调试方法
 
 排查设备不回 ACK 类问题时，在传输层打印原始字节与时间点：
