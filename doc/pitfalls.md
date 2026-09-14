@@ -37,8 +37,8 @@
 
 ## pytest-qt 退出段错误（非本项目 bug）
 
-- **现象**：全量测试收尾时 PySide6/pytest-qt 在 Windows 解释器退出报段错误（码 -1073740791），**未改动代码上可复现**。
-- **处理**：非本项目 bug，GUI 测试按文件单独跑以容忍该退出问题。
+- **现象**：全量测试收尾时 PySide6/pytest-qt 在 Windows 解释器退出报段错误（码 -1073740791），**未改动代码上可复现**。也可能**中途打断**：2026-09-14 全量 `python -m pytest`（386 项）跑到 `tests/test_worker.py` 附近时 `Windows fatal exception: code 0x8001010d`（Qt 事件处理 `pytestqt/plugin.py:220 _process_events`），进程退出码 9，非断言失败。
+- **处理**：非本项目 bug；遭遇退出码 9 时按剩余文件单独补跑（如 `pytest tests/test_worker.py tests/test_ymodem.py tests/test_ymodem_protocol.py`）确认全绿，不要把退出码 9 当成用例失败。
 
 ## Qt.Popup 测试 waitExposed 段错误
 - **现象**：pytest 中对 Qt.Popup 窗口调 `qtbot.waitExposed(popup)` 直接段错误（-1073740791）崩溃。
