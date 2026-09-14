@@ -3,7 +3,7 @@ import pytest
 from lbs_firmware_studio.backend.protocol_frame import (
     HEADER, SOURCE, DEST, FOOTER, CMD_RESET, CMD_ACK, CMD_FILE_START,
     FOLDER_CMD_MAP, calculate_checksum, build_frame, parse_frame,
-    CMD_RUN_TOGGLE,
+    CMD_RUN_TOGGLE, CMD_REMOTE_ENTER, CMD_REMOTE_EXIT,
 )
 
 def test_checksum_is_sum_low8():
@@ -54,6 +54,21 @@ def test_run_toggle_frame_matches_device_protocol():
 
 def test_run_toggle_cmd_value():
     assert CMD_RUN_TOGGLE == 0xB6
+
+
+def test_remote_enter_frame_matches_device_protocol():
+    """验证进入遥控模式帧逐字节一致：5A 97 98 00 C2 4B A5"""
+    assert build_frame(CMD_REMOTE_ENTER, b"") == bytes.fromhex("5A 97 98 00 C2 4B A5")
+
+
+def test_remote_exit_frame_matches_device_protocol():
+    """验证退出遥控模式帧逐字节一致：5A 97 98 00 C0 49 A5"""
+    assert build_frame(CMD_REMOTE_EXIT, b"") == bytes.fromhex("5A 97 98 00 C0 49 A5")
+
+
+def test_remote_cmd_values():
+    assert CMD_REMOTE_ENTER == 0xC2
+    assert CMD_REMOTE_EXIT == 0xC0
 
 
 def test_build_frame_rejects_str_data():

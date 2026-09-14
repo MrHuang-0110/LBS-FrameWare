@@ -190,3 +190,57 @@ def test_connection_hint_switches_with_state(qtbot):
     assert "已连接设备" in p.connection_hint_text()
     p.set_transport_getter(lambda: None)       # 断开
     assert "请先在设备浮窗连接设备" in p.connection_hint_text()
+
+
+# --- SPARK-AI 遥控模式按钮 ---
+def test_spark_ai_remote_controls_visible(qtbot):
+    """SPARK-AI 右侧监控栏显示进入/退出遥控模式按钮。"""
+    p = MonitorPanel(); qtbot.addWidget(p)
+    p.set_profile(_profile("SPARK-AI"))
+    assert p.has_remote_controls() is True
+    assert p.remote_enter_button().text() == "进入遥控模式"
+    assert p.remote_exit_button().text() == "退出遥控模式"
+
+
+def test_non_spark_ai_remote_controls_hidden(qtbot):
+    """非 SPARK-AI 产品隐藏遥控模式按钮，避免误发不兼容命令。"""
+    for name in ("NEW-AI", "NEXT-AI"):
+        p = MonitorPanel(); qtbot.addWidget(p)
+        p.set_profile(_profile(name))
+        assert p.has_remote_controls() is False
+
+
+def test_spark_ai_remote_controls_enable_only_when_connected_and_unlocked(qtbot):
+    """SPARK-AI 遥控按钮：无持久链路禁用，连接且未锁定时启用，busy/locked 时禁用。"""
+    p = MonitorPanel(); qtbot.addWidget(p)
+    p.set_profile(_profile("SPARK-AI"))
+    assert p.remote_enter_button().isEnabled() is False
+    assert p.remote_exit_button().isEnabled() is False
+
+    p.set_transport_getter(lambda: object())
+    assert p.remote_enter_button().isEnabled() is True
+    assert p.remote_exit_button().isEnabled() is True
+
+    p.set_remote_controls_locked(True)
+    assert p.remote_enter_button().isEnabled() is False
+    assert p.remote_exit_button().isEnabled() is False
+
+    p.set_remote_controls_locked(False)
+    assert p.remote_enter_button().isEnabled() is True
+    assert p.remote_exit_button().isEnabled() is True
+
+    p.set_transport_getter(lambda: None)
+    assert p.remote_enter_button().isEnabled() is False
+    assert p.remote_exit_button().isEnabled() is False
+
+
+def test_remote_control_buttons_emit_requested_actions(qtbot):
+    """点击进入/退出按钮分别 emit enter/exit，不在 MonitorPanel 内写协议。"""
+    p = MonitorPanel(); qtbot.addWidget(p)
+    p.set_profile(_profile("SPARK-AI"))
+    p.set_transport_getter(lambda: object())
+    actions = []
+    p.remote_mode_requested.connect(lambda action: actions.append(action))
+    p.remote_enter_button().click()
+    p.remote_exit_button().click()
+    assert actions == ["enter", "exit"]

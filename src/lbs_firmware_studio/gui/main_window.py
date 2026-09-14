@@ -34,6 +34,7 @@ _POPUP_KEYS = {"device"}     # ActivityBar 浮窗触发键：点击只发 action
 _SETTINGS_KEY = "settings"   # ActivityBar 底部设置键：点击发 action_triggered("settings")
 _BUSY_STATES = {"compiling", "connecting", "entering_upgrade", "reconnecting", "transfering"}
 _MONITOR_WIDTH = 280         # 右侧监控栏固定宽度（像素）
+_REMOTE_MODE_CMDS = {"enter": pf.CMD_REMOTE_ENTER, "exit": pf.CMD_REMOTE_EXIT}
 
 
 class MainWindow(QWidget):
@@ -191,6 +192,8 @@ class MainWindow(QWidget):
         deleteLater 释放旧页实例。"""
         while self._stack.count():
             w = self._stack.widget(0)
+            if w is None:
+                break
             self._stack.removeWidget(w)
             w.deleteLater()
         self._build_pages()
@@ -212,6 +215,8 @@ class MainWindow(QWidget):
         self._monitor.host_state_changed.connect(self._editor_page.on_host_state_changed)
         # 监控帧 → 顶栏主机信息（HostStatusBar 数据源）
         self._monitor.frame_rendered.connect(self._on_host_frame)
+        # SPARK-AI 遥控按钮 → MainWindow 写当前持久链路（GUI 组件不碰协议/transport）
+        self._monitor.remote_mode_requested.connect(self._on_remote_mode_requested)
         prof = MONITOR_PROFILES.get(self._profile.name)
         self._host_bar.set_fields(prof["status_fields"] if prof else [])
         # 编辑页运行/暂停按钮 → 发 0xB6 命令
@@ -341,15 +346,32 @@ class MainWindow(QWidget):
         except OSError:
             pass  # 传输层写失败，等下一帧监控数据修正按钮状态
 
+    def _on_remote_mode_requested(self, action: str) -> None:
+        """发送 SPARK-AI 进入/退出遥控模式命令（0xC2/0xC0）到当前持久链路。"""
+        if getattr(self._profile, "name", None) != "SPARK-AI" or self._busy:
+            return
+        transport = self._conn.persistent_transport()
+        if transport is None:
+            return
+        cmd = _REMOTE_MODE_CMDS.get(action)
+        if cmd is None:
+            return
+        try:
+            transport.write(pf.build_frame(cmd, b""))
+        except OSError:
+            pass
+
     def _set_page_busy(self, busy: bool) -> None:
-        """固件区与编辑页的忙碌态（按钮使能）统一设置。"""
+        """固件区、编辑页与右侧遥控按钮的忙碌态（按钮使能）统一设置。"""
         self._firmware.set_busy(busy)
         self._editor_page.set_busy(busy)
+        self._monitor.set_remote_controls_locked(busy)
 
     def _set_locked(self, locked: bool) -> None:
-        """busy 锁：禁用浮窗内产品切换/连接与 ActivityBar 导航切换（浮窗本身可弹）。"""
+        """busy 锁：禁用浮窗内产品切换/连接、ActivityBar 导航切换与遥控按钮。"""
         self._popup.set_locked(locked)
         self._activity.set_locked(locked)
+        self._monitor.set_remote_controls_locked(locked)
 
     def _update_deploy_buttons(self) -> None:
         """按「是否选中连接目标」和「是否蓝牙固件门禁」更新下发按钮使能态。
@@ -394,6 +416,7 @@ class MainWindow(QWidget):
             self._monitor.stop_monitor()
         self._busy = True
         page.set_busy(True)
+        self._monitor.set_remote_controls_locked(True)
         # 已手动建连则复用活链路（worker 不再 open/close）；否则沿用一次性建连
         if persistent is not None:
             self._transport = persistent

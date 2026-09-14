@@ -24,6 +24,7 @@ _RENDER_INTERVAL_MS = 100
 class MonitorPanel(QWidget):
     host_state_changed = Signal(str)
     frame_rendered = Signal(object)   # 每帧节流渲染后转发最新帧（顶栏主机信息数据源）
+    remote_mode_requested = Signal(str)  # "enter" | "exit"；MainWindow 负责协议帧写入
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,6 +32,7 @@ class MonitorPanel(QWidget):
         self._cards: dict[int, SensorCard] = {}
         self._latest: dict | None = None
         self._monitoring = False
+        self._remote_controls_locked = False
         self._transport_getter = lambda: None   # 由 MainWindow 注入：取设备浮窗已连接的持久链路
 
         self._worker = MonitorWorker()
@@ -56,6 +58,23 @@ class MonitorPanel(QWidget):
         hint_lay.addWidget(hint_icon)
         hint_lay.addWidget(self._conn_hint_text)
         hint_lay.addStretch(1)
+
+        # SPARK-AI 遥控模式控制：MonitorPanel 只发信号，MainWindow 写协议/transport。
+        self._remote_controls = QFrame()
+        self._remote_controls.setObjectName("remoteControls")
+        remote_lay = QVBoxLayout(self._remote_controls)
+        remote_lay.setContentsMargins(0, 0, 0, 0)
+        remote_lay.setSpacing(theme.SPACE_SM)
+        self._remote_enter_btn = QPushButton("进入遥控模式")
+        self._remote_enter_btn.setObjectName("primary")
+        self._remote_enter_btn.setIcon(qta.icon("fa5s.gamepad", color=theme.TEXT_ON_ACCENT))
+        self._remote_exit_btn = QPushButton("退出遥控模式")
+        self._remote_exit_btn.setIcon(qta.icon("fa5s.times-circle", color=theme.TEXT_PRIMARY))
+        self._remote_enter_btn.clicked.connect(lambda: self.remote_mode_requested.emit("enter"))
+        self._remote_exit_btn.clicked.connect(lambda: self.remote_mode_requested.emit("exit"))
+        remote_lay.addWidget(self._remote_enter_btn)
+        remote_lay.addWidget(self._remote_exit_btn)
+        self._remote_controls.setVisible(False)
         self._refresh_connection_hint()
 
         # 卡片区（两列）
@@ -71,6 +90,7 @@ class MonitorPanel(QWidget):
         lay.setContentsMargins(theme.SPACE_MD, theme.SPACE_LG, theme.SPACE_MD, theme.SPACE_LG)
         lay.setSpacing(theme.SPACE_MD)
         lay.addWidget(self._conn_hint)
+        lay.addWidget(self._remote_controls)
         lay.addWidget(self._notice)
         lay.addWidget(self._grid_host, 1)
 
@@ -84,24 +104,46 @@ class MonitorPanel(QWidget):
     def set_profile(self, profile) -> None:
         self._profile = profile
         self._rebuild_cards()
+        self._refresh_remote_controls()
 
     def set_transport_getter(self, getter) -> None:
         """注入取设备浮窗持久链路的回调。返回非 None 时监控复用该链路（串口/蓝牙皆可）。"""
         self._transport_getter = getter
         self._refresh_connection_hint()
 
+    def set_remote_controls_locked(self, locked: bool) -> None:
+        """外部 busy/locked 时禁用 SPARK-AI 遥控按钮。"""
+        self._remote_controls_locked = locked
+        self._refresh_remote_controls()
+
+    def _is_remote_supported(self) -> bool:
+        return getattr(self._profile, "name", None) == "SPARK-AI"
+
+    def _has_transport(self) -> bool:
+        return self._transport_getter() is not None
+
     def _refresh_connection_hint(self) -> None:
         """依据浮窗持久链路是否可用切换提示条：未连接 WARNING / 已连接 SUCCESS（设计 §4.5）。"""
-        connected = self._transport_getter() is not None
+        connected = self._has_transport()
         bg = theme.SUCCESS_BG if connected else theme.WARNING_BG
         self._conn_hint.setStyleSheet(
             f"QFrame#connHint {{ background: {bg}; border-radius: {theme.RADIUS_MD}px; }}")
         self._conn_hint_text.setText("已连接设备" if connected else "请先在设备浮窗连接设备")
+        self._refresh_remote_controls()
+
+    def _refresh_remote_controls(self) -> None:
+        supported = self._is_remote_supported()
+        enabled = supported and self._has_transport() and not self._remote_controls_locked
+        self._remote_controls.setVisible(supported)
+        self._remote_enter_btn.setEnabled(enabled)
+        self._remote_exit_btn.setEnabled(enabled)
 
     def _rebuild_cards(self) -> None:
         # 清空旧卡片
         while self._grid.count():
             item = self._grid.takeAt(0)
+            if item is None:
+                break
             w = item.widget()
             if w is not None:
                 w.deleteLater()
@@ -235,3 +277,13 @@ class MonitorPanel(QWidget):
 
     def latest_frame(self) -> "dict | None":
         return self._latest
+
+    def has_remote_controls(self) -> bool:
+        """SPARK-AI 才显示遥控按钮区；使用 isHidden 避免父控件未 show 时误判。"""
+        return not self._remote_controls.isHidden()
+
+    def remote_enter_button(self) -> QPushButton:
+        return self._remote_enter_btn
+
+    def remote_exit_button(self) -> QPushButton:
+        return self._remote_exit_btn

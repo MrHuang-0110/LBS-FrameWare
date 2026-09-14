@@ -15,6 +15,11 @@ def _raw():
     return {"compiler_path": "./t.exe", "products": {"NEW-AI": {"protocol": "custom_frame", "ble": {"enabled": True, "firmware_over_ble": False}}}}
 
 
+def _spark_profile():
+    return DeviceProfile(name="SPARK-AI", protocol="custom_frame", display_ports=4,
+                         folders=["app", "version"], firmware_dir=Path("./x"))
+
+
 class _FakePort:
     def __init__(self, device, desc, vid=None, pid=None):
         self.device = device; self.description = desc; self.vid = vid; self.pid = pid
@@ -81,6 +86,11 @@ class _FakeTransport:
         self.written.append(data)
 
 
+class _RaisingTransport:
+    def write(self, data: bytes):
+        raise OSError("serial write failed")
+
+
 def test_run_pause_buttons_disabled_without_target(qtbot, tmp_path):
     """未选目标时运行/暂停按钮禁用。"""
     w = MainWindow(_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
@@ -135,3 +145,70 @@ def test_host_state_signal_forwarded_to_editor(qtbot, tmp_path):
     w._monitor.host_state_changed.emit("stop")
     assert w._editor_page._run_btn.isEnabled() is True
     assert w._editor_page._pause_btn.isEnabled() is False
+
+
+def test_remote_mode_buttons_send_exact_frames(qtbot, tmp_path, monkeypatch):
+    """SPARK-AI 遥控按钮经 MainWindow 写出进入/退出遥控模式帧。"""
+    w = MainWindow(_spark_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    fake = _FakeTransport()
+    monkeypatch.setattr(w._conn, "persistent_transport", lambda: fake)
+    w._monitor.set_transport_getter(w._conn.persistent_transport)
+
+    w._monitor.remote_enter_button().click()
+    w._monitor.remote_exit_button().click()
+
+    assert fake.written == [
+        bytes.fromhex("5A 97 98 00 C2 4B A5"),
+        bytes.fromhex("5A 97 98 00 C0 49 A5"),
+    ]
+
+
+def test_remote_mode_no_transport_silent(qtbot, tmp_path, monkeypatch):
+    """无持久链路时遥控请求静默返回，不崩溃、不写入。"""
+    w = MainWindow(_spark_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    fake = _FakeTransport()
+    monkeypatch.setattr(w._conn, "persistent_transport", lambda: None)
+    w._on_remote_mode_requested("enter")
+    assert fake.written == []
+
+
+def test_remote_mode_buttons_disabled_during_busy(qtbot, tmp_path, monkeypatch):
+    """busy/locked 时 SPARK-AI 遥控按钮禁用。"""
+    w = MainWindow(_spark_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    fake = _FakeTransport()
+    monkeypatch.setattr(w._conn, "persistent_transport", lambda: fake)
+    w._monitor.set_transport_getter(w._conn.persistent_transport)
+    assert w._monitor.remote_enter_button().isEnabled() is True
+
+    w._busy = True
+    w._set_page_busy(True)
+    assert w._monitor.remote_enter_button().isEnabled() is False
+    assert w._monitor.remote_exit_button().isEnabled() is False
+
+    w._on_remote_mode_requested("enter")
+    assert fake.written == []
+
+
+def test_remote_mode_write_oserror_is_ignored(qtbot, tmp_path, monkeypatch):
+    """遥控写入抛 OSError 时不崩溃。"""
+    w = MainWindow(_spark_profile(), _raw(), tmp_path / "products.yaml"); qtbot.addWidget(w)
+    monkeypatch.setattr(w._conn, "persistent_transport", lambda: _RaisingTransport())
+    w._monitor.set_transport_getter(w._conn.persistent_transport)
+    w._monitor.remote_enter_button().click()
+
+
+def test_remote_mode_signal_stays_wired_after_switch_to_spark(qtbot, tmp_path, monkeypatch):
+    """产品切换重建 MonitorPanel 后，SPARK-AI 遥控按钮仍能写入帧。"""
+    new = _profile()
+    spark = _spark_profile()
+    w = MainWindow(new, _raw(), tmp_path / "products.yaml",
+                   profiles={"NEW-AI": new, "SPARK-AI": spark})
+    qtbot.addWidget(w)
+    w._product_selector.select_product("SPARK-AI")
+
+    fake = _FakeTransport()
+    monkeypatch.setattr(w._conn, "persistent_transport", lambda: fake)
+    w._monitor.set_transport_getter(w._conn.persistent_transport)
+    w._monitor.remote_enter_button().click()
+
+    assert fake.written == [bytes.fromhex("5A 97 98 00 C2 4B A5")]
