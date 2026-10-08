@@ -16,3 +16,6 @@ scripts/diag_*.py
 # Inno Setup ±ãĞ¯±àÒëÆ÷£¨±¾µØ¹¹½¨¹¤¾ß£¬²»Èë¿â£»°²×°½Å±¾ scripts/installer.iss Èë¿â£©
 tools/innosetup-setup.exe
 tools/innosetup/
+
+# DSH/agent ä»»åŠ¡è¿è¡Œäº§ç‰©â€”â€”æœ¬æœºä¸“å±ï¼Œä¸å…¥åº“
+.reasonix/
