@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NovaLink Device Studio</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/echarts.min.js"></script>
+</head>
+<body class="bg-[#0b1018] text-slate-200 antialiased">
+<div class="h-screen min-h-[760px] overflow-hidden flex flex-col bg-[#0b1018]">
+<header class="h-14 shrink-0 flex items-center justify-between border-b border-slate-800 bg-[#101722] px-5">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2.5 text-white">
+<div class="h-8 w-8 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center"><iconify-icon class="text-xl text-cyan-300" icon="solar:cpu-bolt-bold"></iconify-icon></div>
+<span class="font-semibold tracking-wide">NovaLink <span class="text-slate-500 font-normal">Device Studio</span></span>
+</div>
+<div class="h-5 w-px bg-slate-700"></div>
+<button class="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-600">
+<span class="h-2 w-2 rounded-full bg-emerald-400"></span> USB-C · COM 06
+          <iconify-icon icon="solar:alt-arrow-down-linear"></iconify-icon>
+</button>
+</div>
+<div class="flex items-center gap-4 text-xs text-slate-400">
+<span class="hidden lg:flex items-center gap-1.5"><iconify-icon class="text-base text-emerald-400" icon="solar:cloud-check-linear"></iconify-icon> 工作区已同步</span>
+<button class="relative text-slate-400 hover:text-white"><iconify-icon class="text-xl" icon="solar:bell-linear"></iconify-icon><span class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400 border border-[#101722]"></span></button>
+<div class="h-7 w-7 rounded-full bg-gradient-to-br from-cyan-300 to-blue-600 flex items-center justify-center text-[10px] font-bold text-slate-950">LY</div>
+</div>
+</header>
+<div class="flex min-h-0 flex-1">
+<aside class="w-64 shrink-0 border-r border-slate-800 bg-[#0e151f] flex flex-col">
+<div class="p-4 border-b border-slate-800">
+<p class="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">连接设备</p>
+<button class="w-full rounded-lg border border-cyan-400/25 bg-cyan-400/5 p-3 text-left hover:bg-cyan-400/10">
+<div class="flex items-start justify-between">
+<div class="flex gap-2.5"><div class="mt-0.5 h-8 w-8 rounded-md bg-cyan-400/15 flex items-center justify-center"><iconify-icon class="text-lg text-cyan-300" icon="solar:chip-linear"></iconify-icon></div><div><p class="text-sm font-medium text-slate-100">Astra M4 Core</p><p class="mt-0.5 text-[11px] text-slate-500">NLK-M4-00824</p></div></div>
+<span class="mt-1.5 h-2 w-2 rounded-full bg-emerald-400"></span>
+</div>
+</button>
+<button class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-300"><iconify-icon class="text-base" icon="solar:add-circle-linear"></iconify-icon> 添加设备</button>
+</div>
+<nav class="p-3 space-y-1">
+<p class="px-2 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">工作台</p>
+<button class="nav-item flex w-full items-center gap-3 rounded-md bg-cyan-400/10 px-3 py-2.5 text-sm text-cyan-200" id="nav-firmware" onclick="switchPage('firmware')"><iconify-icon class="text-lg" icon="solar:upload-square-linear"></iconify-icon>固件更新<span class="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-300"></span></button>
+<button class="nav-item flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-100" id="nav-monitor" onclick="switchPage('monitor')"><iconify-icon class="text-lg" icon="solar:chart-2-linear"></iconify-icon>数据监控</button>
+<button class="nav-item flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-100" id="nav-editor" onclick="switchPage('editor')"><iconify-icon class="text-lg" icon="solar:code-square-linear"></iconify-icon>代码编辑</button>
+</nav>
+<div class="mx-3 border-t border-slate-800 pt-3 space-y-1">
+<button class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-slate-800"><iconify-icon class="text-lg" icon="solar:folder-with-files-linear"></iconify-icon>项目文件</button>
+<button class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-slate-800"><iconify-icon class="text-lg" icon="solar:settings-linear"></iconify-icon>设备配置</button>
+</div>
+<div class="mt-auto m-3 rounded-lg border border-slate-800 bg-[#121b27] p-3">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-300"><iconify-icon class="text-base text-emerald-400" icon="solar:shield-check-linear"></iconify-icon>安全连接</div>
+<p class="mt-1 text-[11px] leading-4 text-slate-500">会话密钥有效期还剩 46 分钟</p>
+</div>
+</aside>
+<main class="min-w-0 flex-1 overflow-y-auto bg-[#0b1018]">
+<section class="page p-7" id="page-firmware">
+<div class="mx-auto max-w-[1320px]">
+<div class="flex items-start justify-between">
+<div><div class="flex items-center gap-2 text-xs text-slate-500"><span>设备管理</span><iconify-icon icon="solar:alt-arrow-right-linear"></iconify-icon><span class="text-slate-300">固件更新</span></div><h1 class="mt-2 text-2xl font-semibold text-white">固件更新中心</h1><p class="mt-1 text-sm text-slate-500">为 Astra M4 Core 执行可追踪、可回滚的安全升级。</p></div>
+<div class="flex gap-2"><button class="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800" onclick="showToast('已导出完整调试日志')"><iconify-icon class="mr-1 text-base align-middle" icon="solar:export-linear"></iconify-icon>导出日志</button><button class="rounded-md bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-300" id="updateBtn" onclick="runUpdate()"><iconify-icon class="mr-1 text-base align-middle" icon="solar:upload-minimalistic-linear"></iconify-icon>开始更新</button></div>
+</div>
+<div class="mt-6 grid grid-cols-12 gap-5">
+<div class="col-span-12 xl:col-span-8 space-y-5">
+<div class="rounded-xl border border-slate-800 bg-[#101722] p-5">
+<div class="flex items-center justify-between"><div><h2 class="font-medium text-slate-100">更新任务</h2><p class="mt-1 text-xs text-slate-500">已验证软件包的完整性与设备兼容性</p></div><span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] text-emerald-300">已就绪</span></div>
+<div class="mt-5 grid grid-cols-3 divide-x divide-slate-800 rounded-lg border border-slate-800 bg-[#0d141e]">
+<div class="p-4"><p class="text-[11px] text-slate-500">当前版本</p><p class="mt-1 font-mono text-sm text-slate-200">v2.4.1 · build 804</p></div>
+<div class="p-4"><p class="text-[11px] text-slate-500">目标版本</p><p class="mt-1 font-mono text-sm text-cyan-300">v2.5.0 · build 921</p></div>
+<div class="p-4"><p class="text-[11px] text-slate-500">软件包大小</p><p class="mt-1 text-sm text-slate-200">18.6 MB <span class="text-slate-500">· SHA-256 已验证</span></p></div>
+</div>
+<div class="mt-5 flex gap-3 rounded-lg border border-amber-400/15 bg-amber-400/5 p-3"><iconify-icon class="mt-0.5 text-lg text-amber-300" icon="solar:shield-warning-linear"></iconify-icon><p class="text-xs leading-5 text-slate-400">更新期间请保持 USB 连接稳定。系统会在写入前自动创建恢复快照，如校验失败将回滚至 <span class="font-mono text-slate-300">v2.4.1</span>。</p></div>
+</div>
+<div class="rounded-xl border border-slate-800 bg-[#101722] overflow-hidden">
+<div class="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><h2 class="font-medium text-slate-100">过程日志</h2><p class="mt-1 text-xs text-slate-500">任务 ID：FW-20260806-1042</p></div><button class="text-xs text-slate-500 hover:text-slate-300" onclick="clearLogs()">清空视图</button></div>
+<div class="h-[290px] overflow-y-auto bg-[#0a0f16] px-5 py-3 font-mono text-xs leading-6" id="logs">
+<p><span class="text-slate-600">01:17:02.531</span> <span class="text-emerald-400">INFO</span>  已检测到设备：Astra M4 Core [NLK-M4-00824]</p>
+<p><span class="text-slate-600">01:17:02.884</span> <span class="text-emerald-400">INFO</span>  引导加载程序响应正常，协议 v3.2</p>
+<p><span class="text-slate-600">01:17:04.216</span> <span class="text-cyan-400">CHECK</span> 校验固件包签名：通过</p>
+<p><span class="text-slate-600">01:17:05.777</span> <span class="text-cyan-400">CHECK</span> 创建恢复快照：slot-B / 18.4 MB</p>
+<p><span class="text-slate-600">01:17:06.035</span> <span class="text-slate-400">WAIT</span>  等待操作员确认开始更新</p>
+</div>
+</div>
+</div>
+<div class="col-span-12 xl:col-span-4 space-y-5">
+<div class="rounded-xl border border-slate-800 bg-[#101722] p-5"><h2 class="font-medium text-slate-100">设备状态</h2><div class="mt-5 space-y-4"><div class="flex justify-between text-sm"><span class="text-slate-500">连接状态</span><span class="text-emerald-300">● 在线</span></div><div class="flex justify-between text-sm"><span class="text-slate-500">运行模式</span><span class="text-slate-200">应用程序</span></div><div class="flex justify-between text-sm"><span class="text-slate-500">电池电压</span><span class="font-mono text-slate-200">12.16 V</span></div><div class="flex justify-between text-sm"><span class="text-slate-500">上次更新</span><span class="text-slate-300">2026-07-21</span></div></div></div>
+<div class="rounded-xl border border-red-400/15 bg-red-400/[0.03] p-5"><div class="flex items-center gap-2"><iconify-icon class="text-xl text-red-300" icon="solar:restart-linear"></iconify-icon><h2 class="font-medium text-slate-100">异常回滚</h2></div><p class="mt-3 text-xs leading-5 text-slate-500">仅当更新中断、设备无法启动或完整性校验失败时使用恢复快照。</p><button class="mt-4 w-full rounded-md border border-red-400/25 py-2 text-xs font-medium text-red-300 hover:bg-red-400/10" onclick="rollback()">从恢复快照回滚</button></div>
+</div>
+</div>
+</div>
+</section>
+<section class="page hidden p-7" id="page-monitor">
+<div class="mx-auto max-w-[1320px]"><div class="flex items-start justify-between"><div><div class="flex items-center gap-2 text-xs text-slate-500"><span>设备管理</span><iconify-icon icon="solar:alt-arrow-right-linear"></iconify-icon><span class="text-slate-300">数据监控</span></div><h1 class="mt-2 text-2xl font-semibold text-white">实时遥测监控</h1><p class="mt-1 text-sm text-slate-500">Astra M4 Core · 每 500 ms 采样 · 当前会话 00:18:42</p></div><div class="flex items-center gap-3"><span class="flex items-center gap-2 text-xs text-emerald-300"><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>实时采集中</span><button class="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800" onclick="showToast('遥测数据已导出为 CSV')">导出 CSV</button></div></div>
+<div class="mt-6 grid grid-cols-4 gap-4"><div class="rounded-xl border border-slate-800 bg-[#101722] p-4"><p class="text-xs text-slate-500">输入电压</p><div class="mt-2 flex items-end justify-between"><p class="font-mono text-2xl text-cyan-300">12.16 <span class="text-sm">V</span></p><span class="text-xs text-emerald-300">↑ 0.4%</span></div></div><div class="rounded-xl border border-slate-800 bg-[#101722] p-4"><p class="text-xs text-slate-500">系统电流</p><div class="mt-2 flex items-end justify-between"><p class="font-mono text-2xl text-violet-300">1.84 <span class="text-sm">A</span></p><span class="text-xs text-red-300">↑ 3.2%</span></div></div><div class="rounded-xl border border-slate-800 bg-[#101722] p-4"><p class="text-xs text-slate-500">核心温度</p><div class="mt-2 flex items-end justify-between"><p class="font-mono text-2xl text-amber-300">43.8 <span class="text-sm">°C</span></p><span class="text-xs text-slate-500">稳定</span></div></div><div class="rounded-xl border border-slate-800 bg-[#101722] p-4"><p class="text-xs text-slate-500">运行负载</p><div class="mt-2 flex items-end justify-between"><p class="font-mono text-2xl text-emerald-300">37 <span class="text-sm">%</span></p><span class="text-xs text-emerald-300">正常</span></div></div></div>
+<div class="mt-5 rounded-xl border border-slate-800 bg-[#101722] p-5"><div class="flex items-center justify-between"><div><h2 class="font-medium text-slate-100">电源与温度趋势</h2><p class="mt-1 text-xs text-slate-500">最近 60 秒连续变化曲线</p></div><div class="flex gap-3 text-xs"><span class="flex items-center gap-1.5 text-cyan-300"><i class="h-2 w-2 rounded-full bg-cyan-400"></i>电压 (V)</span><span class="flex items-center gap-1.5 text-violet-300"><i class="h-2 w-2 rounded-full bg-violet-400"></i>电流 (A)</span><span class="flex items-center gap-1.5 text-amber-300"><i class="h-2 w-2 rounded-full bg-amber-400"></i>温度 (°C)</span></div></div><div class="mt-4 h-[360px]" id="telemetryChart"></div></div>
+<div class="mt-5 rounded-xl border border-slate-800 bg-[#101722] p-5"><div class="flex items-start justify-between"><div><h2 class="font-medium text-slate-100">端口设备识别</h2><p class="mt-1 text-xs text-slate-500">8 个扩展端口已完成总线扫描，点击端口可查看当前识别状态。</p></div><span class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-300">8 / 8 已识别</span></div><div class="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4"><button class="rounded-lg border border-cyan-400/25 bg-cyan-400/[0.04] p-3 text-left transition hover:border-cyan-400/60 hover:bg-cyan-400/[0.08]" onclick="inspectPort('P1', '大电机', '1,240 RPM · 运行中')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-cyan-300">P1</span><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-cyan-300" icon="solar:settings-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">大电机</span></div><p class="mt-2 text-xs text-slate-500">1,240 RPM · 运行中</p></button><button class="rounded-lg border border-violet-400/25 bg-violet-400/[0.04] p-3 text-left transition hover:border-violet-400/60 hover:bg-violet-400/[0.08]" onclick="inspectPort('P2', '中电机', '680 RPM · 运行中')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-violet-300">P2</span><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-violet-300" icon="solar:settings-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">中电机</span></div><p class="mt-2 text-xs text-slate-500">680 RPM · 运行中</p></button><button class="rounded-lg border border-fuchsia-400/25 bg-fuchsia-400/[0.04] p-3 text-left transition hover:border-fuchsia-400/60 hover:bg-fuchsia-400/[0.08]" onclick="inspectPort('P3', '颜色识别', '蓝色 · 置信度 98%')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-fuchsia-300">P3</span><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-fuchsia-300" icon="solar:pallete-2-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">颜色识别</span></div><p class="mt-2 text-xs text-slate-500">蓝色 · 置信度 98%</p></button><button class="rounded-lg border border-sky-400/25 bg-sky-400/[0.04] p-3 text-left transition hover:border-sky-400/60 hover:bg-sky-400/[0.08]" onclick="inspectPort('P4', '超声波', '42.6 cm · 距离有效')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-sky-300">P4</span><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-sky-300" icon="solar:radar-2-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">超声波</span></div><p class="mt-2 text-xs text-slate-500">42.6 cm · 距离有效</p></button><button class="rounded-lg border border-amber-400/25 bg-amber-400/[0.04] p-3 text-left transition hover:border-amber-400/60 hover:bg-amber-400/[0.08]" onclick="inspectPort('P5', '触摸', '未触发 · 输入正常')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-amber-300">P5</span><span class="h-2 w-2 rounded-full bg-emerald-400"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-amber-300" icon="solar:hand-stars-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">触摸</span></div><p class="mt-2 text-xs text-slate-500">未触发 · 输入正常</p></button><button class="rounded-lg border border-rose-400/25 bg-rose-400/[0.04] p-3 text-left transition hover:border-rose-400/60 hover:bg-rose-400/[0.08]" onclick="inspectPort('P6', '摄像头', '30 FPS · 图像稳定')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-rose-300">P6</span><span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-rose-300" icon="solar:camera-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">摄像头</span></div><p class="mt-2 text-xs text-slate-500">30 FPS · 图像稳定</p></button><button class="rounded-lg border border-cyan-400/25 bg-cyan-400/[0.04] p-3 text-left transition hover:border-cyan-400/60 hover:bg-cyan-400/[0.08]" onclick="inspectPort('P7', '大电机', '待命 · 0 RPM')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-cyan-300">P7</span><span class="h-2 w-2 rounded-full bg-emerald-400"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-cyan-300" icon="solar:settings-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">大电机</span></div><p class="mt-2 text-xs text-slate-500">待命 · 0 RPM</p></button><button class="rounded-lg border border-violet-400/25 bg-violet-400/[0.04] p-3 text-left transition hover:border-violet-400/60 hover:bg-violet-400/[0.08]" onclick="inspectPort('P8', '中电机', '待命 · 0 RPM')"><div class="flex items-center justify-between"><span class="font-mono text-xs text-violet-300">P8</span><span class="h-2 w-2 rounded-full bg-emerald-400"></span></div><div class="mt-3 flex items-center gap-2"><iconify-icon class="text-xl text-violet-300" icon="solar:settings-linear"></iconify-icon><span class="text-sm font-medium text-slate-100">中电机</span></div><p class="mt-2 text-xs text-slate-500">待命 · 0 RPM</p></button></div></div>
+<div class="mt-5 grid grid-cols-3 gap-5"><div class="rounded-xl border border-slate-800 bg-[#101722] p-5"><h2 class="font-medium text-slate-100">阈值守护</h2><div class="mt-4 space-y-3 text-xs"><div class="flex justify-between"><span class="text-slate-500">低压告警</span><span class="font-mono text-slate-300">&lt; 10.80 V</span></div><div class="flex justify-between"><span class="text-slate-500">过流告警</span><span class="font-mono text-slate-300">&gt; 3.20 A</span></div><div class="flex justify-between"><span class="text-slate-500">过温告警</span><span class="font-mono text-slate-300">&gt; 75.0 °C</span></div></div></div><div class="col-span-2 rounded-xl border border-slate-800 bg-[#101722] p-5"><h2 class="font-medium text-slate-100">事件流</h2><div class="mt-3 grid grid-cols-3 gap-3 text-xs"><div class="rounded-md bg-[#0c131c] p-3"><p class="text-slate-500">01:16:54</p><p class="mt-1 text-emerald-300">采样率恢复 2Hz</p></div><div class="rounded-md bg-[#0c131c] p-3"><p class="text-slate-500">01:14:08</p><p class="mt-1 text-slate-300">负载峰值 51%</p></div><div class="rounded-md bg-[#0c131c] p-3"><p class="text-slate-500">01:11:31</p><p class="mt-1 text-cyan-300">建立监控会话</p></div></div></div></div>
+</div>
+</section>
+<section class="page hidden h-full p-5" id="page-editor">
+<div class="mx-auto flex h-full max-w-[1380px] flex-col"><div class="flex shrink-0 items-center justify-between pb-4"><div><h1 class="text-2xl font-semibold text-white">代码编辑器</h1><p class="mt-1 text-sm text-slate-500">项目：astra-m4-control · 已连接目标设备</p></div><div class="flex gap-2"><button class="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800" onclick="showToast('代码格式化完成')">格式化</button><button class="rounded-md bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950" onclick="showToast('构建成功：0 errors, 0 warnings')"><iconify-icon class="mr-1 align-middle" icon="solar:play-linear"></iconify-icon>构建并部署</button></div></div><div class="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-800 bg-[#0d131c] flex"><aside class="w-56 shrink-0 border-r border-slate-800 bg-[#101722] p-3"><p class="px-2 pb-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">资源管理器</p><div class="space-y-1 text-xs"><p class="flex items-center gap-1.5 rounded px-2 py-1.5 text-slate-300"><iconify-icon class="text-amber-300" icon="solar:folder-open-linear"></iconify-icon>astra-m4-control</p><p class="ml-4 flex items-center gap-1.5 px-2 py-1.5 text-slate-500"><iconify-icon class="text-amber-300" icon="solar:folder-linear"></iconify-icon>src</p><button class="ml-8 flex w-[calc(100%-2rem)] items-center gap-1.5 rounded bg-cyan-400/10 px-2 py-1.5 text-left text-cyan-200"><iconify-icon icon="solar:file-code-linear"></iconify-icon>main.cpp</button><p class="ml-8 flex items-center gap-1.5 px-2 py-1.5 text-slate-500"><iconify-icon icon="solar:file-code-linear"></iconify-icon>telemetry.hpp</p><p class="ml-4 flex items-center gap-1.5 px-2 py-1.5 text-slate-500"><iconify-icon class="text-amber-300" icon="solar:folder-linear"></iconify-icon>config</p><p class="ml-4 flex items-center gap-1.5 px-2 py-1.5 text-slate-500"><iconify-icon icon="solar:file-text-linear"></iconify-icon>CMakeLists.txt</p></div></aside><div class="min-w-0 flex-1 flex flex-col"><div class="flex h-10 shrink-0 items-center border-b border-slate-800 bg-[#111a26]"><div class="flex h-full items-center gap-2 border-r border-slate-800 bg-[#0d131c] px-4 text-xs text-cyan-200"><iconify-icon icon="solar:file-code-linear"></iconify-icon>main.cpp <iconify-icon class="text-slate-500" icon="solar:close-circle-linear"></iconify-icon></div></div><div class="min-h-0 flex-1 overflow-auto font-mono text-[13px] leading-6"><div class="flex min-w-[700px]"><div class="select-none border-r border-slate-800 bg-[#0b1018] px-3 py-4 text-right text-slate-600">1<br/>2<br/>3<br/>4<br/>5<br/>6<br/>7<br/>8<br/>9<br/>10<br/>11<br/>12<br/>13<br/>14<br/>15<br/>16<br/>17</div><pre class="flex-1 whitespace-pre px-5 py-4 text-slate-300 outline-none" contenteditable="true" spellcheck="false"><span class="text-violet-300">#include</span> <span class="text-emerald-300">"telemetry.hpp"</span>
+<span class="text-violet-300">#include</span> <span class="text-emerald-300">"device_controller.hpp"</span>
+
+<span class="text-violet-300">constexpr</span> <span class="text-sky-300">uint32_t</span> SAMPLE_INTERVAL_MS = <span class="text-amber-300">500</span>;
+
+<span class="text-sky-300">void</span> <span class="text-cyan-300">setup</span>() {
+  DeviceController::begin();
+  Telemetry::setSampleInterval(SAMPLE_INTERVAL_MS);
+  Telemetry::onThresholdExceeded([](SensorType type, <span class="text-sky-300">float</span> value) {
+    Logger::warn(<span class="text-emerald-300">"Threshold exceeded: {} = {}"</span>, type, value);
+    DeviceController::setSafeMode(<span class="text-violet-300">true</span>);
+  });
+}
+
+<span class="text-sky-300">void</span> <span class="text-cyan-300">loop</span>() {
+  Telemetry::sample();
+  DeviceController::process();
+  delay(<span class="text-amber-300">10</span>);
+}</pre></div></div><div class="flex h-7 shrink-0 items-center justify-between bg-cyan-500 px-3 text-[11px] text-slate-950"><span class="font-medium">● 设备在线 · 已选择 Astra M4 Core</span><span>UTF-8 · C++ · Ln 17, Col 2</span></div></div></div></div>
+</section>
+</main>
+</div>
+</div>
+<div class="hidden fixed right-6 bottom-6 z-50 rounded-lg border border-emerald-400/25 bg-[#15251f] px-4 py-3 text-sm text-emerald-200 shadow-2xl" id="toast"></div>
+<script>
+    let chart;
+    const pages = ['firmware','monitor','editor'];
+    function switchPage(name) {
+      pages.forEach(p => {
+        document.getElementById('page-' + p).classList.toggle('hidden', p !== name);
+        const nav = document.getElementById('nav-' + p);
+        nav.className = 'nav-item flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm ' + (p === name ? 'bg-cyan-400/10 text-cyan-200' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100');
+      });
+      if (name === 'monitor') setTimeout(initChart, 50);
+    }
+    function showToast(text) { const t = document.getElementById('toast'); t.textContent = text; t.classList.remove('hidden'); setTimeout(() => t.classList.add('hidden'), 2600); }
+    function inspectPort(port, device, status) { showToast(port + ' 已识别：' + device + ' · ' + status); }
+    function addLog(kind, text) { const logs = document.getElementById('logs'); const now = new Date().toLocaleTimeString('zh-CN', {hour12:false}) + '.000'; logs.innerHTML += '<p><span class="text-slate-600">' + now + '</span> <span class="text-cyan-400">' + kind + '</span> ' + text + '</p>'; logs.scrollTop = logs.scrollHeight; }
+    function runUpdate() { const b = document.getElementById('updateBtn'); b.disabled = true; b.textContent = '更新进行中…'; addLog('START', '开始写入固件镜像至 slot-A'); setTimeout(() => addLog('WRITE', '写入进度：34% · 块 406 / 1194'), 500); setTimeout(() => addLog('WRITE', '写入进度：76% · 块 907 / 1194'), 1100); setTimeout(() => { addLog('DONE ', '写入完成，等待设备重启并进行完整性校验'); b.disabled = false; b.textContent = '完成，等待重启'; showToast('固件写入完成，正在验证设备启动状态'); }, 1800); }
+    function rollback() { addLog('ROLLBACK', '操作员请求回滚，已锁定当前更新任务'); addLog('RESTORE', '恢复快照 slot-B：v2.4.1 · build 804'); showToast('回滚流程已加入设备任务队列'); }
+    function clearLogs() { document.getElementById('logs').innerHTML = '<p><span class="text-slate-600">系统</span> <span class="text-slate-400">日志视图已清空，设备任务仍在保留。</span></p>'; }
+    function initChart() {
+      const el = document.getElementById('telemetryChart'); if (!el || typeof echarts === 'undefined') return; if (chart) chart.dispose(); chart = echarts.init(el);
+      const x = Array.from({length: 24}, (_, i) => '01:' + String(6 + Math.floor(i / 2)).padStart(2,'0') + ':' + (i % 2 ? '30' : '00'));
+      chart.setOption({backgroundColor:'transparent', tooltip:{trigger:'axis',backgroundColor:'#17212e',borderColor:'#334155',textStyle:{color:'#e2e8f0'}}, grid:{left:50,right:55,top:20,bottom:35}, xAxis:{type:'category',data:x,axisLine:{lineStyle:{color:'#334155'}},axisLabel:{color:'#64748b',fontSize:10}}, yAxis:[{type:'value',name:'V / A',min:0,max:14,axisLine:{show:false},splitLine:{lineStyle:{color:'#1e293b'}},axisLabel:{color:'#64748b',fontSize:10},nameTextStyle:{color:'#64748b'}},{type:'value',name:'°C',min:20,max:80,axisLine:{show:false},splitLine:{show:false},axisLabel:{color:'#64748b',fontSize:10},nameTextStyle:{color:'#64748b'}}], series:[{name:'电压',type:'line',smooth:true,symbol:'none',data:[12.0,12.1,12.08,12.15,12.12,12.2,12.16,12.22,12.25,12.19,12.14,12.18,12.16,12.11,12.17,12.22,12.24,12.2,12.18,12.16,12.13,12.17,12.15,12.16],lineStyle:{color:'#22d3ee',width:2},areaStyle:{color:'rgba(34,211,238,.08)'}},{name:'电流',type:'line',smooth:true,symbol:'none',data:[1.4,1.45,1.57,1.6,1.55,1.63,1.74,1.7,1.88,1.94,2.03,1.96,1.84,1.78,1.82,1.92,1.88,1.8,1.77,1.82,1.86,1.81,1.8,1.84],lineStyle:{color:'#a78bfa',width:2}},{name:'温度',type:'line',yAxisIndex:1,smooth:true,symbol:'none',data:[38,38.4,39,39.5,39.8,40.2,40.8,41,41.5,41.8,42.6,42.8,43.1,43.5,43.2,43.8,44.1,44.4,44,43.8,43.7,43.9,43.6,43.8],lineStyle:{color:'#fbbf24',width:2}}]});
+    }
+    window.addEventListener('resize', () => { if(chart) chart.resize(); });
+  </script>
+</body>
+</html>
